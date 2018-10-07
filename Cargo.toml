@@ -1,0 +1,8 @@
+[package]
+name = "backupmanager"
+version = "0.1.0"
+authors = ["Aaron Brodersen <aaron@abrodersen.com>"]
+
+[dependencies]
+lvm2 =  { path = "../lvm2-rs" }
+env_logger = "0.5"
