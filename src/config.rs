@@ -1,43 +1,55 @@
 
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::path::Path;
+
 use failure::Error;
 
+use toml;
+
 pub fn load_config(path: &Path) -> Result<Config, Error> {
-    let file = OpenOptions::new()
+    let mut file = OpenOptions::new()
         .read(true)
         .open(path)?;
-    
 
+    let mut data = Vec::new();
+    file.read_to_end(&mut data)?;
+
+    let config = toml::de::from_slice(&data)?;
+
+    Ok(config)
 }
 
+#[derive(Deserialize)]
 pub struct Config {
     targets: Vec<Target>
 }
 
+#[derive(Deserialize)]
 pub struct Target {
     name: String,
+    #[serde(flatten)]
     typ: TargetType,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type")]
 pub enum TargetType {
-    S3(S3Config)
+    #[serde(rename = "s3")]
+    S3 { region: String, bucket: String }
 }
 
-pub struct S3Config {
-    region: String,
-    bucket: String,
-    key_prefix: Option<String>,
-}
-
+#[derive(Deserialize)]
 pub struct Source {
     name: String,
     target: String,
+    #[serde(flatten)]
+    typ: SourceType,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "type")]
 pub enum SourceType {
-    LVM(LVMConfig)
-}
-
-pub struct LVMConfig {
-    vg: String,
-    lv: String,
+    #[serde(rename = "lvm")]
+    LVM { volume_group: String, logical_volume: String }
 }

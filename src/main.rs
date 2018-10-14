@@ -1,6 +1,15 @@
 
 extern crate lvm2;
+#[macro_use]
+extern crate log;
 extern crate env_logger;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
+extern crate toml;
+extern crate failure;
+
+mod config;
 
 fn main() {
     env_logger::init();
