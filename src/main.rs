@@ -9,7 +9,11 @@ extern crate serde_derive;
 extern crate toml;
 extern crate failure;
 
+#[cfg(test)]
+extern crate tempfile;
+
 mod config;
+mod source;
 
 fn main() {
     env_logger::init();

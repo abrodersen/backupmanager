@@ -1,0 +1,5 @@
+[[destinations]]
+name = "foo"
+type = "s3"
+region = "us-east-2"
+bucket = "test"

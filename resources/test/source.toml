@@ -1,0 +1,6 @@
+[[sources]]
+name = "foo"
+target = "bar"
+type = "lvm"
+volume_group = "vg"
+logical_volume = "lv"
