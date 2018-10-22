@@ -11,6 +11,8 @@ serde = "1.0"
 serde_derive = "1.0"
 toml = "0.4"
 failure = "0.1"
+sys-mount = "1.0"
+uuid = { version = "0.7", features = ["serde", "v4"] }
+tempfile = "3.0"
 
 [dev-dependencies]
-tempfile = "3.0"

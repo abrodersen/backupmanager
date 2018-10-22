@@ -7,11 +7,13 @@ extern crate serde;
 #[macro_use]
 extern crate serde_derive;
 extern crate toml;
+#[macro_use]
 extern crate failure;
-
-#[cfg(test)]
+extern crate sys_mount;
+extern crate uuid;
 extern crate tempfile;
 
+mod mount;
 mod config;
 mod source;
 

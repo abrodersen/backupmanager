@@ -1,4 +1,6 @@
 
+mod lvm;
+
 use std::fs::{self, Metadata, ReadDir};
 use std::mem;
 
@@ -9,11 +11,12 @@ use failure::Error;
 pub trait Source {
     type S: Snapshot;
 
-    fn snapshot() -> Self::S;
+    fn snapshot(&self) -> Result<Self::S, Error>;
 }
 
-pub trait Snapshot: Drop {
-    fn files<'a>(&'a self) -> Files<'a>;
+pub trait Snapshot {
+    fn files<'a>(&'a self) -> Result<Files<'a>, Error>;
+    fn destroy(self) -> Result<(), Error>;
 }
 
 pub struct Files<'a> {
@@ -66,8 +69,6 @@ impl<'a> Files<'a> {
                 self.stack.push(parent);
             }
         }
-
-        None
     }
 }
 
@@ -79,6 +80,7 @@ impl<'a> Iterator for Files<'a> {
     }
 }
 
+#[cfg(test)]
 mod test {
 
     use super::*;
