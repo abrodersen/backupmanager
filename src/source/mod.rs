@@ -67,6 +67,7 @@ impl<'a> Files<'a> {
                 };
                 let parent = mem::replace(&mut self.current, child);
                 self.stack.push(parent);
+                return Some(Ok((entry.path(), metadata)));
             }
         }
     }
@@ -154,7 +155,9 @@ mod test {
         ];
         let dir = generate_fs_structure(dirs);
         let files = enumerate(dir.path());
-        assert!(files.is_empty(), "files should be empty");
+        let names = get_relative_paths(&dir, &files);
+        assert_eq!(names.len(), 1);
+        assert_eq!(names[0], "foo");
     }
 
     #[test]
@@ -177,8 +180,9 @@ mod test {
         let dir = generate_fs_structure(dirs);
         let files = enumerate(dir.path());
         let names = get_relative_paths(&dir, &files);
-        assert_eq!(names.len(), 1);
-        assert_eq!(names[0], "foo/bar.baz");
+        assert_eq!(names.len(), 2);
+        assert_eq!(names[0], "foo");
+        assert_eq!(names[1], "foo/bar.baz");
     }
 
     #[test]
@@ -204,7 +208,8 @@ mod test {
         let dir = generate_fs_structure(dirs);
         let files = enumerate(dir.path());
         let names = get_relative_paths(&dir, &files);
-        assert_eq!(names.len(), 2);
+        assert_eq!(names.len(), 3);
+        assert_eq!(names[0], "foo");
         assert!(names.contains(&"foo/bar"));
         assert!(names.contains(&"foo/baz"));
     }
@@ -218,8 +223,10 @@ mod test {
         let dir = generate_fs_structure(dirs);
         let files = enumerate(dir.path());
         let names = get_relative_paths(&dir, &files);
-        assert_eq!(names.len(), 2);
+        assert_eq!(names.len(), 4);
+        assert!(names.contains(&"foobar"));
         assert!(names.contains(&"foobar/baz"));
+        assert!(names.contains(&"foo"));
         assert!(names.contains(&"foo/barbaz"));
     }
 
@@ -232,7 +239,7 @@ mod test {
         let dir = generate_fs_structure(dirs);
         let files = enumerate(dir.path());
         let names = get_relative_paths(&dir, &files);
-        assert_eq!(names.len(), 0);
+        assert_eq!(names.len(), 2);
     }
 
     #[test]
