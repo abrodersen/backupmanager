@@ -8,9 +8,9 @@ pub trait Destination {
 }
 
 pub trait Target {
-    fn block_size() -> usize;
-    fn upload(idx: u64, data: &[u8]) -> Result<(), Error>;
-    fn delete(&self) -> Result<(), Error>;
+    fn block_size(&self) -> usize;
+    fn upload(&self, idx: u64, data: &[u8]) -> Result<(), Error>;
+    fn finalize(self) -> Result<(), (Self, Error)>;
 }
 
 
