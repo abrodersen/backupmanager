@@ -12,10 +12,16 @@ extern crate failure;
 extern crate sys_mount;
 extern crate uuid;
 extern crate tempfile;
+extern crate rusoto_core;
+extern crate rusoto_s3;
+extern crate futures;
+extern crate tar;
 
 mod mount;
 mod config;
 mod source;
+mod destination;
+mod backup;
 
 fn main() {
     env_logger::init();

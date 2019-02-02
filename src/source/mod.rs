@@ -1,5 +1,5 @@
 
-mod lvm;
+pub(crate) mod lvm;
 
 use std::fs::{self, Metadata, ReadDir};
 use std::mem;
@@ -33,6 +33,10 @@ impl<'a> Files<'a> {
             current: start,
             stack: Vec::new(),
         })
+    }
+
+    pub fn base_path(&self) -> &'a Path {
+        self.base
     }
 
     fn next_file(&mut self) -> Option<Result<(PathBuf, Metadata), Error>> {
@@ -77,7 +81,10 @@ impl<'a> Iterator for Files<'a> {
     type Item = Result<(PathBuf, Metadata), Error>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.next_file()
+        self.next_file().map(|r| r.and_then(|(path, metadata)| {
+            let short = path.strip_prefix(self.base)?.to_path_buf();
+            Ok((short, metadata))
+        }))
     }
 }
 

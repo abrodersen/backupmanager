@@ -1,86 +1,103 @@
 
-use failure::Error;
+use std::sync;
+use std::str::FromStr;
+use std::mem;
+
+use rusoto_core as aws;
+use rusoto_s3 as s3;
+use rusoto_s3::S3;
+
+use failure::{self, Error};
+
+use futures::{stream, Stream};
 
 pub struct AwsBucket {
     region: String,
     bucket: String,
-    profile: String
+}
+
+impl AwsBucket {
+    pub fn new(region: &str, bucket: &str) -> AwsBucket {
+        AwsBucket { 
+            region: region.into(),
+            bucket: bucket.into(),
+        }
+    }
 }
 
 pub struct AwsUpload {
     bucket: String,
     key: String,
     id: String,
-    client: S3Client,
-    state: Mutex<CompletedMultipartUpload>,
+    client: s3::S3Client,
+    state: sync::Mutex<s3::CompletedMultipartUpload>,
 }
 
 const BLOCK_SIZE: usize = 1 << 26;
 
-impl Destination for AwsBucket {
-    fn allocate(&self, name: &str) -> Result<Box<Target>, Error> {
-        let region = Region::from_str(name)?;
-        let client = S3Client::new(region);
+impl super::Destination for AwsBucket {
+    fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
+        let region = aws::Region::from_str(name)?;
+        let client = s3::S3Client::new(region);
 
-        let upload_req = CreateMultipartUploadRequest::default();
+        let mut upload_req = s3::CreateMultipartUploadRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = name.into();
 
         let response = client.create_multipart_upload(upload_req).sync()?;
-        AwsUpload { 
+        let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
+
+        Ok(Box::new(AwsUpload { 
             bucket: self.bucket.clone(),
             key: name.into(), 
-            id: response.id, 
+            id: id.into(), 
             client: client,
-            state: Mutex::new(CompletedMultipartUpload::default()),
-        }
+            state: sync::Mutex::new(s3::CompletedMultipartUpload::default()),
+        }))
     }
 }
 
-impl Target for AwsObject {
+impl super::Target for AwsUpload {
     fn block_size(&self) -> usize {
         BLOCK_SIZE
     }
 
-    fn upload(&self, idx: u64, data: &[u8]) -> Result<(), Error> {
-        let upload_req = UploadPartRequest::default();
+    fn upload<'a>(&self, idx: u64, data: Vec<u8>) -> Result<(), Error> {
+        let mut upload_req = s3::UploadPartRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = self.key.clone();
-        upload_req.id = self.id.clone();
+        upload_req.upload_id = self.id.clone();
 
-        let stream = stream::iter_ok(data).chunks(4096);
-        upload_req.body = Some(StreamingBody::new(stream));
         upload_req.content_length = Some(data.len() as i64);
+        upload_req.body = Some(data.into());
         upload_req.part_number = idx as i64;
 
         let result = self.client.upload_part(upload_req).sync()?;
         
         {
             let mut state = self.state.lock().unwrap();
-            let mut parts = state.parts.unwrap_or_else(|| Vec::new());
-            parts.push(CompletedPart {
+            let mut parts = mem::replace(&mut state.parts, None).unwrap_or_else(|| Vec::new());
+            parts.push(s3::CompletedPart {
                 part_number: Some(idx as i64),
                 e_tag: result.e_tag,
             });
-            state.parts = parts;
+            state.parts = Some(parts);
         }
 
         Ok(())
     }
 
-    fn finalize(self) -> Result<(), (Self, Error)> {
-        let complete_req = CompleteMultipartUploadRequest::default();
+    fn finalize(self) -> Result<(), Error> {
+        let mut complete_req = s3::CompleteMultipartUploadRequest::default();
         complete_req.bucket = self.bucket.clone();
         complete_req.key = self.key.clone();
-        complete_req.id = self.id.clone();
+        complete_req.upload_id = self.id.clone();
         {
-            let mut state = self.state.lock.unwrap();
-            complete_req.multipart_upload = Some(state);
+            let mut state = self.state.lock().unwrap();
+            complete_req.multipart_upload = Some(state.clone());
         }
 
-        self.client.complete_multipart_upload(complete_req)
-            .sync()
-            .map_err(|e| (self, e));
+        self.client.complete_multipart_upload(complete_req).sync()?;
 
         Ok(())
     }

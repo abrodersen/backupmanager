@@ -1,3 +1,4 @@
+pub(crate) mod aws;
 
 use std::io;
 
@@ -9,8 +10,8 @@ pub trait Destination {
 
 pub trait Target {
     fn block_size(&self) -> usize;
-    fn upload(&self, idx: u64, data: &[u8]) -> Result<(), Error>;
-    fn finalize(self) -> Result<(), (Self, Error)>;
+    fn upload(&self, idx: u64, data: Vec<u8>) -> Result<(), Error>;
+    fn finalize(self) -> Result<(), Error>;
 }
 
 

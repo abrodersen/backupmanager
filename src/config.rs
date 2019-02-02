@@ -24,13 +24,15 @@ pub fn load_config(path: &Path) -> Result<Config, Error> {
 pub struct Config {
     destinations: Option<Vec<Destination>>,
     sources: Option<Vec<Source>>,
+    compression: Option<Vec<Compression>>,
+    encryption: Option<Vec<Encryption>>,
 }
 
 #[derive(Deserialize)]
 pub struct Destination {
-    name: String,
+    pub name: String,
     #[serde(flatten)]
-    typ: DestinationType,
+    pub typ: DestinationType,
 }
 
 #[derive(Deserialize)]
@@ -42,10 +44,10 @@ pub enum DestinationType {
 
 #[derive(Deserialize)]
 pub struct Source {
-    name: String,
-    target: String,
+    pub name: String,
+    pub target: String,
     #[serde(flatten)]
-    typ: SourceType,
+    pub typ: SourceType,
 }
 
 #[derive(Deserialize)]
@@ -53,6 +55,34 @@ pub struct Source {
 pub enum SourceType {
     #[serde(rename = "lvm")]
     LVM { volume_group: String, logical_volume: String }
+}
+
+#[derive(Deserialize)]
+pub struct Compression {
+    name: String,
+    #[serde(flatten)]
+    typ: CompressionType
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub enum CompressionType {
+    #[serde(rename = "gzip")]
+    Gzip,
+}
+
+#[derive(Deserialize)]
+pub struct Encryption {
+    name: String,
+    #[serde(flatten)]
+    typ: EncryptionType,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub enum EncryptionType {
+    #[serde(rename = "pgp")]
+    PGP { key_id: String }
 }
 
 mod test {
