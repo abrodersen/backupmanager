@@ -1,7 +1,7 @@
 
 use super::config;
 use super::source::{self, Source, Snapshot, lvm};
-use super::destination::{self, Destination, aws};
+use super::destination::{self, Destination, Target, aws};
 
 use std::fs;
 use std::io;
@@ -46,6 +46,11 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     let block_size = allocation.block_size();
     let (tx, rx) = sync_channel(0);
     let writer = WriteChunker::new(block_size, tx);
+
+    thread::spawn(move || {
+        let chunk = rx.recv().unwrap();
+        allocation.upload(chunk.idx, chunk).unwrap();
+    });
 
     let mut builder = tar::Builder::new(writer);
     builder.follow_symlinks(false);

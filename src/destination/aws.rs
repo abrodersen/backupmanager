@@ -2,6 +2,7 @@
 use std::sync;
 use std::str::FromStr;
 use std::mem;
+use std::io;
 
 use rusoto_core as aws;
 use rusoto_s3 as s3;
@@ -36,7 +37,9 @@ pub struct AwsUpload {
 const BLOCK_SIZE: usize = 1 << 26;
 
 impl super::Destination for AwsBucket {
-    fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
+    type Alloc = AwsUpload;
+
+    fn allocate(&self, name: &str) -> Result<Self::Alloc, Error> {
         let region = aws::Region::from_str(name)?;
         let client = s3::S3Client::new(region);
 
@@ -47,13 +50,13 @@ impl super::Destination for AwsBucket {
         let response = client.create_multipart_upload(upload_req).sync()?;
         let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
 
-        Ok(Box::new(AwsUpload { 
+        Ok(AwsUpload { 
             bucket: self.bucket.clone(),
             key: name.into(), 
             id: id.into(), 
             client: client,
             state: sync::Mutex::new(s3::CompletedMultipartUpload::default()),
-        }))
+        })
     }
 }
 
@@ -62,14 +65,15 @@ impl super::Target for AwsUpload {
         BLOCK_SIZE
     }
 
-    fn upload<'a>(&self, idx: u64, data: Vec<u8>) -> Result<(), Error> {
+    fn upload<S>(&self, idx: u64, s: S) -> Result<(), Error> 
+        where S: stream::Stream<Item=Vec<u8>, Error=io::Error> + Send + 'static
+    {
         let mut upload_req = s3::UploadPartRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = self.key.clone();
         upload_req.upload_id = self.id.clone();
 
-        upload_req.content_length = Some(data.len() as i64);
-        upload_req.body = Some(data.into());
+        upload_req.body = Some(s3::StreamingBody::new(s));
         upload_req.part_number = idx as i64;
 
         let result = self.client.upload_part(upload_req).sync()?;
