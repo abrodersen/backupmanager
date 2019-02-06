@@ -27,26 +27,47 @@ impl Source for LogicalVolume {
     type S = LogicalVolumeSnaphsot;
 
     fn snapshot(&self) -> Result<LogicalVolumeSnaphsot, Error> {
+        trace!("snapshot of lv {}/{} started", self.vg, self.lv);
+
         let id = Uuid::new_v4();
         let ctx = Context::new();
+        trace!("scanning LVM volumes");
         ctx.scan();
+
+        trace!("opening vg {}", self.vg);
         let vg = ctx.open_volume_group(&self.vg, &Mode::ReadWrite);
+
+        trace!("listing logical volumes");
         let volume = vg.list_logical_volumes()
             .into_iter()
             .find(|lv| lv.name() == self.lv);
 
         let name = snapshot_name(&self.lv, id);
-        let _ = volume
+        let snapshot = volume
             .ok_or_else(|| format_err!("snapshot not found"))
-            .map(|v| v.snapshot(&name, 0))?;
+            .map(|v| v.snapshot(&name, 1 << 30))?;
+
+        debug!("created snapshot '{}'", snapshot.name());
+
+        let dir = tempfile::tempdir()?;
+        debug!("created tempdir '{}'", dir.path().display());
 
         let mut buf = PathBuf::from("/dev");
         buf.push(&self.vg);
-        buf.push(&self.lv);
+        buf.push(snapshot.name());
 
-        let dir = tempfile::tempdir()?;
+        let dest = PathBuf::from("/mnt/usbstick");
 
-        mount::mount(buf, dir.path().to_path_buf())?;
+
+        trace!("mounting block device '{}' to tempdir '{}'", buf.display(), dest.display());
+        if let Err(e) = mount::mount(buf, dest) {
+            error!("failed to mount snapshot: {}", e);
+            let name = snapshot.name().to_string();
+            trace!("removing snapshot '{}'", name);
+            snapshot.remove();
+            trace!("snapshot '{}' removed", name);
+            return Err(e);
+        }
 
         Ok(LogicalVolumeSnaphsot {
             vg: self.vg.clone(),

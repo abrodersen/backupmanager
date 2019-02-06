@@ -39,13 +39,14 @@ pub struct Destination {
 #[serde(tag = "type")]
 pub enum DestinationType {
     #[serde(rename = "s3")]
-    S3 { region: String, bucket: String }
+    S3 { region: String, bucket: String },
+    #[serde(rename = "null")]
+    Null,
 }
 
 #[derive(Deserialize)]
 pub struct Source {
     pub name: String,
-    pub target: String,
     #[serde(flatten)]
     pub typ: SourceType,
 }

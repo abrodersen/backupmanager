@@ -16,6 +16,7 @@ extern crate rusoto_core;
 extern crate rusoto_s3;
 extern crate futures;
 extern crate tar;
+extern crate crossbeam;
 
 mod mount;
 mod config;
@@ -26,28 +27,26 @@ mod backup;
 fn main() {
     env_logger::init();
 
-    let context = lvm2::Context::new();
-    context.scan();
-
-    let vg_names = context.list_volume_group_names();
-
-    for vg_name in vg_names {
-        println!("group: {}", vg_name);
-        let vg = context.open_volume_group(&vg_name, &lvm2::Mode::ReadWrite);
-
-        for lv in vg.list_logical_volumes() {
-            if lv.name() == "home" {
-                let size = (1 << 30) * 4;
-                let snapshot = lv.snapshot("home_snap", size);
-                println!("snapshot: {}", snapshot.name());
-                println!("origin: {}", snapshot.origin().unwrap());
-                snapshot.remove();
-            } else {
-                println!("volume: {}", lv.name());
-
-            }
+    let source = config::Source {
+        name: "lvm".into(),
+        typ: config::SourceType::LVM { 
+            volume_group: "vg-test".into(), 
+            logical_volume: "lv-test".into(),
         }
-    }
+    };
 
-    
+    let dest = config::Destination {
+        name: "null".into(),
+        typ: config::DestinationType::Null,
+    };
+
+    let job = backup::Job {
+        name: "test-backup".into(),
+        source: source,
+        destination: dest,
+        encryption: None,
+        compression: None,
+    };
+
+    backup::full_backup(&job).unwrap();
 }

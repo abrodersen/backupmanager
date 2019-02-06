@@ -1,14 +1,14 @@
 
 use super::config;
 use super::source::{self, Source, Snapshot, lvm};
-use super::destination::{self, Destination, Target, aws};
+use super::destination::{self, Destination, Target, aws, null};
 
+use std::any;
 use std::fs;
 use std::io;
 use std::cmp;
 use std::mem;
-use std::sync::mpsc::{sync_channel, SyncSender, Receiver};
-use std::thread;
+use std::sync;
 
 use tar;
 
@@ -16,6 +16,9 @@ use failure::Error;
 
 use futures;
 use futures::stream;
+
+use crossbeam::channel;
+use crossbeam::thread;
 
 pub struct Job {
    pub name: String,
@@ -33,34 +36,75 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     };
 
     let destination = match &job.destination.typ {
-        config::DestinationType::S3 { region, bucket } => {
-            aws::AwsBucket::new(region.as_ref(), bucket.as_ref())
-        }
+        // config::DestinationType::S3 { region, bucket } => {
+        //     Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref()))
+        // },
+        config::DestinationType::Null => null::NullDestination,
+        _ => panic!("destination not implemented"),
     };
 
     let snapshot = source.snapshot()?;
-    let files = snapshot.files()?;
-    let base_path = files.base_path();
+    let target = destination.allocate(job.name.as_ref())?;
+    
+    let result = upload_archive(snapshot, &target);
 
-    let allocation = destination.allocate(job.name.as_ref())?;
-    let block_size = allocation.block_size();
-    let (tx, rx) = sync_channel(0);
+    Ok(())
+}
+
+fn upload_archive<S, T>(snapshot: S, target: &T) -> Result<(), Error> 
+    where S: Snapshot, T: Target + Sync + ?Sized
+{
+    let block_size = target.block_size();
+    let (tx, rx) = channel::bounded(0);
     let writer = WriteChunker::new(block_size, tx);
 
-    thread::spawn(move || {
-        let chunk = rx.recv().unwrap();
-        allocation.upload(chunk.idx, chunk).unwrap();
-    });
+    thread::scope(|s| {
+        let worker_thread = s.spawn(|_| {
+            trace!("new thread spawned");
+            loop {
+                trace!("listening for message");
+                match rx.recv() {
+                    Err(_) => {
+                        debug!("channel closed, exiting thread...");
+                        return Result::Ok::<(), Error>(());
+                    },
+                    Ok(chunk) => {
+                        let index = chunk.idx;
+                        info!("received chunk '{}'", index);
+                        target.upload(index, chunk)?;
+                    }
+                }
+            }
+        });
 
-    let mut builder = tar::Builder::new(writer);
-    builder.follow_symlinks(false);
+        let mut builder = tar::Builder::new(writer);
+        builder.follow_symlinks(false);
 
-    for entry in files {
-        let (rel_path, _) = entry?;
-        let full_path = base_path.join(&rel_path);
-        let mut file = fs::File::open(full_path)?;
-        builder.append_file(rel_path, &mut file)?;
-    }
+        let files = snapshot.files()?;
+        let base_path = files.base_path();
+
+        for entry in files {
+            let (rel_path, _) = entry?;
+            let full_path = base_path.join(&rel_path);
+            let mut file = fs::File::open(full_path)?;
+            debug!("appending file '{}' to archive stream", rel_path.display());
+            builder.append_file(rel_path, &mut file)?;
+        }
+
+        worker_thread.join()
+            .map_err(|inner| {
+                let r: &Error = inner.downcast_ref().expect("invalid error returned from thread");
+                format_err!("error returned from worker thread: {}", r)
+            })
+            .and_then(|x| x)?;
+
+        Result::Ok::<(), Error>(())
+    })
+    .map_err(|inner| {
+        let r: &Error = inner.downcast_ref().expect("invalid error returned from thread");
+        format_err!("error returned from thread scope: {}", r)
+    })
+    .and_then(|x| x)?;
 
     Ok(())
 }
@@ -68,12 +112,12 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
 struct WriteChunker {
     limit: usize,
     buffer: Vec<u8>,
-    sender: SyncSender<Chunk>,
+    sender: channel::Sender<Chunk>,
     idx: u64, 
 }
 
 impl WriteChunker {
-    fn new(limit: usize, sender: SyncSender<Chunk>) -> WriteChunker {
+    fn new(limit: usize, sender: channel::Sender<Chunk>) -> WriteChunker {
         WriteChunker {
             limit: limit,
             buffer: Vec::with_capacity(limit),

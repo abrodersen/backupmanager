@@ -14,7 +14,7 @@ pub trait Source {
     fn snapshot(&self) -> Result<Self::S, Error>;
 }
 
-pub trait Snapshot {
+pub trait Snapshot: Sized {
     fn files<'a>(&'a self) -> Result<Files<'a>, Error>;
     fn destroy(self) -> Result<(), Error>;
 }
