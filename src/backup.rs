@@ -56,13 +56,17 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
         error!("failed to tear down snaphsot: {}", e);
     }
 
-    Ok(())
+    result.and_then(|_| {
+        info!("upload succeeded, finalizing target");
+        target.finalize()
+    })
 }
 
 fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error> 
     where S: Snapshot + ?Sized, T: Target + Sync + ?Sized
 {
     let block_size = target.block_size();
+    debug!("chunk size is {} bytes", block_size);
     let (tx, rx) = channel::bounded(0);
     let writer = WriteChunker::new(block_size, tx);
 
@@ -78,7 +82,7 @@ fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error>
                     },
                     Ok(chunk) => {
                         let index = chunk.idx;
-                        trace!("received chunk '{}'", index);
+                        trace!("received chunk '{}' with {} bytes", index, chunk.buffer.len());
                         target.upload(index, chunk)?;
                         trace!("chunk '{}' uploaded successfully", index);
                     }
@@ -94,11 +98,30 @@ fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error>
 
         debug!("enumerating snapshot files");
         for entry in files {
-            let (rel_path, _) = entry?;
+            let (rel_path, metadata) = entry?;
             let full_path = base_path.join(&rel_path);
-            let mut file = fs::File::open(full_path)?;
-            debug!("appending file '{}' to archive stream", rel_path.display());
-            builder.append_file(rel_path, &mut file)?;
+            let file_type = metadata.file_type();
+
+            if file_type.is_dir() {
+                trace!("appending dir '{}' to archive", rel_path.display());
+                builder.append_dir(&rel_path, &full_path)?;
+            }
+
+            if file_type.is_file() {
+                trace!("appending file '{}' to archive", rel_path.display());
+                let mut file = fs::File::open(&full_path)?;
+                builder.append_file(&rel_path, &mut file)?;
+            }
+
+            if file_type.is_symlink() {
+                trace!("appending symlink '{}' to archive", rel_path.display());
+                let mut header = tar::Header::new_gnu();
+                header.set_path(rel_path)?;
+                header.set_metadata(&metadata);
+                let link = fs::read_link(&full_path)?;
+                header.set_link_name(link)?;
+            }
+            
         }
 
         debug!("finalizing archive");
@@ -127,6 +150,7 @@ fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error>
 
 struct WriteChunker {
     limit: usize,
+    wrote: usize,
     buffer: Vec<u8>,
     sender: channel::Sender<Chunk>,
     idx: u64, 
@@ -136,17 +160,27 @@ impl WriteChunker {
     fn new(limit: usize, sender: channel::Sender<Chunk>) -> WriteChunker {
         WriteChunker {
             limit: limit,
+            wrote: 0,
             buffer: Vec::with_capacity(limit),
             sender: sender,
             idx: 0,
         }
     }
 
+    fn send_chunk(&mut self) -> Result<(), Error> {
+        let chunk = Chunk::new(self.idx, mem::replace(&mut self.buffer, Vec::with_capacity(self.limit)));
+        self.idx += 1;
+        debug!("flushing chunk {} to upload queue", chunk.idx);
+        self.sender.send(chunk).unwrap(); //TODO: propagate this error
+        Ok(())
+    }
+
     fn finish(mut self) -> Result<(), Error> {
-        trace!("flushing any remaining data");
-        self.flush()?;
+        trace!("flushing last chunk");
+        self.send_chunk()?;
         trace!("closing channel");
         drop(self.sender);
+        trace!("wrote {} bytes", self.wrote);
         Ok(())
     }
 }
@@ -154,23 +188,19 @@ impl WriteChunker {
 impl io::Write for WriteChunker {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         trace!("write called");
-        let mut to_write = cmp::min(buf.len(), self.limit - self.buffer.len());
-        trace!("max bytes to write: {}", to_write);
-        if to_write <= 0 {
-            trace!("the chunk is full, performing flush");
-            self.flush()?;
-            to_write = cmp::min(buf.len(), self.limit);
+
+        if self.buffer.len() == self.limit {
+            self.send_chunk().unwrap();
         }
 
-        trace!("writing {} bytes from buffer", to_write);
-        self.buffer.write(&buf[..to_write])
+        let to_write = cmp::min(buf.len(), self.limit - self.buffer.len());
+        trace!("writing {} bytes to current chunk", to_write);
+        let written = self.buffer.write(&buf[..to_write])?;
+        self.wrote += written;
+        Ok(written)
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        let chunk = Chunk::new(self.idx, mem::replace(&mut self.buffer, Vec::with_capacity(self.limit)));
-        self.idx += 1;
-        debug!("flushing chunk {} to upload queue", chunk.idx);
-        self.sender.send(chunk).unwrap(); //TODO: propagate this error
         Ok(())
     }
 }

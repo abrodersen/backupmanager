@@ -1,6 +1,7 @@
 
 use std::fs;
 use std::io::{self, Write};
+use std::sync::atomic;
 
 use failure::Error;
 
@@ -12,12 +13,14 @@ impl super::Destination for NullDestination {
     type Alloc = NullTarget;
 
     fn allocate(&self, name: &str) -> Result<Self::Alloc, Error> {
-        Ok(NullTarget)
+        Ok(NullTarget { written: atomic::AtomicUsize::new(0) })
     }
 
 }
 
-pub struct NullTarget;
+pub struct NullTarget {
+    written: atomic::AtomicUsize,
+}
 
 impl super::Target for NullTarget {
     fn block_size(&self) -> usize {
@@ -31,14 +34,17 @@ impl super::Target for NullTarget {
             .write(true)
             .open("/dev/null")?;
 
-        for chunk in s.wait() {
-            file.write(&(chunk?))?;
+        for result in s.wait() {
+            let batch = result?;
+            file.write_all(&batch)?;
+            self.written.fetch_add(batch.len(), atomic::Ordering::Relaxed);
         }
 
         Ok(())
     }
 
     fn finalize(self) -> Result<(), Error> {
+        trace!("wrote {} bytes", self.written.load(atomic::Ordering::Relaxed));
         Ok(())
     }
 }
