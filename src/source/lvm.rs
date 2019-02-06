@@ -56,11 +56,12 @@ impl Source for LogicalVolume {
         buf.push(&self.vg);
         buf.push(snapshot.name());
 
-        let dest = PathBuf::from("/mnt/usbstick");
+        let src = buf;
+        let dest = dir.path().to_path_buf();
 
 
-        trace!("mounting block device '{}' to tempdir '{}'", buf.display(), dest.display());
-        if let Err(e) = mount::mount(buf, dest) {
+        trace!("mounting block device '{}' to tempdir '{}'", src.display(), dest.display());
+        if let Err(e) = mount::mount(src, dest) {
             error!("failed to mount snapshot: {}", e);
             let name = snapshot.name().to_string();
             trace!("removing snapshot '{}'", name);

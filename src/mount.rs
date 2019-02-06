@@ -1,6 +1,8 @@
 
 use std::path::Path;
 use std::io;
+use std::thread;
+use std::time;
 
 use failure::Error;
 
@@ -15,17 +17,22 @@ pub fn mount<P: AsRef<Path> >(src: P, dst: P) -> Result<(), Error> {
     flags.insert(MountFlags::RDONLY);
     trace!("creating new mount, filesystems: {:?} flags: {:?}", supported, flags);
 
+    trace!("begin mount loop");
     loop {
-        trace!("start loop iteration");
         match Mount::new(src.as_ref(), dst.as_ref(), &supported, flags, None) {
             Ok(_) => {
                 trace!("mount successful");
                 return Ok(())
             },
             Err(e) => {
-                error!("mount failed: {}", e);
-                if e.kind() != io::ErrorKind::NotFound {
-                    bail!(e);
+                match e.kind() {
+                    io::ErrorKind::NotFound => {
+                        thread::sleep(time::Duration::from_millis(10));
+                    },
+                    _ => {
+                        error!("mount failed: {}", e);
+                        bail!(e);
+                    }
                 }
             },
         }

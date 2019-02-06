@@ -5,7 +5,7 @@ use super::destination::{self, Destination, Target, aws, null};
 
 use std::any;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::cmp;
 use std::mem;
 use std::sync;
@@ -43,16 +43,24 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
         _ => panic!("destination not implemented"),
     };
 
+    info!("creating snapshot of source disk");
     let snapshot = source.snapshot()?;
+    info!("allocating a target for backup data");
     let target = destination.allocate(job.name.as_ref())?;
     
-    let result = upload_archive(snapshot, &target);
+    info!("copying data from snapshot to target");
+    let result = upload_archive(&snapshot, &target);
+
+    debug!("tearing down snapshot");
+    if let Err(e) = snapshot.destroy() {
+        error!("failed to tear down snaphsot: {}", e);
+    }
 
     Ok(())
 }
 
-fn upload_archive<S, T>(snapshot: S, target: &T) -> Result<(), Error> 
-    where S: Snapshot, T: Target + Sync + ?Sized
+fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error> 
+    where S: Snapshot + ?Sized, T: Target + Sync + ?Sized
 {
     let block_size = target.block_size();
     let (tx, rx) = channel::bounded(0);
@@ -70,8 +78,9 @@ fn upload_archive<S, T>(snapshot: S, target: &T) -> Result<(), Error>
                     },
                     Ok(chunk) => {
                         let index = chunk.idx;
-                        info!("received chunk '{}'", index);
+                        trace!("received chunk '{}'", index);
                         target.upload(index, chunk)?;
+                        trace!("chunk '{}' uploaded successfully", index);
                     }
                 }
             }
@@ -83,6 +92,7 @@ fn upload_archive<S, T>(snapshot: S, target: &T) -> Result<(), Error>
         let files = snapshot.files()?;
         let base_path = files.base_path();
 
+        debug!("enumerating snapshot files");
         for entry in files {
             let (rel_path, _) = entry?;
             let full_path = base_path.join(&rel_path);
@@ -91,6 +101,12 @@ fn upload_archive<S, T>(snapshot: S, target: &T) -> Result<(), Error>
             builder.append_file(rel_path, &mut file)?;
         }
 
+        debug!("finalizing archive");
+        let writer = builder.into_inner()?;
+        debug!("sending last chunk");
+        writer.finish()?;
+
+        trace!("waiting for worker threads to finish");
         worker_thread.join()
             .map_err(|inner| {
                 let r: &Error = inner.downcast_ref().expect("invalid error returned from thread");
@@ -125,20 +141,35 @@ impl WriteChunker {
             idx: 0,
         }
     }
+
+    fn finish(mut self) -> Result<(), Error> {
+        trace!("flushing any remaining data");
+        self.flush()?;
+        trace!("closing channel");
+        drop(self.sender);
+        Ok(())
+    }
 }
 
 impl io::Write for WriteChunker {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let to_write = cmp::min(buf.len(), self.limit - self.buffer.len());
+        trace!("write called");
+        let mut to_write = cmp::min(buf.len(), self.limit - self.buffer.len());
+        trace!("max bytes to write: {}", to_write);
         if to_write <= 0 {
+            trace!("the chunk is full, performing flush");
             self.flush()?;
+            to_write = cmp::min(buf.len(), self.limit);
         }
+
+        trace!("writing {} bytes from buffer", to_write);
         self.buffer.write(&buf[..to_write])
     }
 
     fn flush(&mut self) -> io::Result<()> {
         let chunk = Chunk::new(self.idx, mem::replace(&mut self.buffer, Vec::with_capacity(self.limit)));
         self.idx += 1;
+        debug!("flushing chunk {} to upload queue", chunk.idx);
         self.sender.send(chunk).unwrap(); //TODO: propagate this error
         Ok(())
     }
