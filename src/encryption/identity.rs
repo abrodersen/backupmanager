@@ -3,6 +3,8 @@ use std::io;
 
 use destination::Target;
 
+use failure::Error;
+
 pub struct IdentityCryptor {
     inner: Box<Target>,
 }
@@ -24,8 +26,8 @@ impl io::Write for IdentityCryptor {
 }
 
 impl super::Cryptor for IdentityCryptor {
-    fn finalize(self: Box<Self>) -> Box<Target> {
-        self.inner
+    fn finalize(self: Box<Self>) -> Result<Box<Target>, Error> {
+        Ok(self.inner)
     }
 }
 

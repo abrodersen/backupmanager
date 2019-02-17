@@ -62,9 +62,9 @@ pub enum SourceType {
 
 #[derive(Deserialize)]
 pub struct Compression {
-    name: String,
+    pub name: String,
     #[serde(flatten)]
-    typ: CompressionType
+    pub typ: CompressionType
 }
 
 #[derive(Deserialize)]
@@ -76,9 +76,9 @@ pub enum CompressionType {
 
 #[derive(Deserialize)]
 pub struct Encryption {
-    name: String,
+    pub name: String,
     #[serde(flatten)]
-    typ: EncryptionType,
+    pub typ: EncryptionType,
 }
 
 #[derive(Deserialize)]

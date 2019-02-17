@@ -3,6 +3,8 @@ use std::io;
 
 use encryption::Cryptor;
 
+use failure::Error;
+
 pub struct IdentityCompressor {
     inner: Box<Cryptor>,
 }
@@ -24,8 +26,8 @@ impl io::Write for IdentityCompressor {
 }
 
 impl super::Compressor for IdentityCompressor {
-    fn finalize(self: Box<Self>) -> Box<Cryptor> {
-        self.inner
+    fn finalize(self: Box<Self>) -> Result<Box<Cryptor>, Error> {
+        Ok(self.inner)
     }
 }
 

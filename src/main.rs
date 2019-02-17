@@ -17,6 +17,7 @@ extern crate rusoto_s3;
 extern crate futures;
 extern crate tar;
 extern crate crossbeam;
+extern crate flate2;
 
 mod mount;
 mod config;
@@ -42,12 +43,17 @@ fn main() {
         typ: config::DestinationType::File { path: "/dev/stdout".into() },
     };
 
+    let comp = config::Compression {
+        name: "gzip".into(),
+        typ: config::CompressionType::Gzip,
+    };
+
     let job = backup::Job {
         name: "test-backup".into(),
         source: source,
         destination: dest,
         encryption: None,
-        compression: None,
+        compression: Some(comp),
     };
 
     backup::full_backup(&job).unwrap();

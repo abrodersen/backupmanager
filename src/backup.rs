@@ -3,7 +3,7 @@ use super::config;
 use super::source::{self, Source, Snapshot, lvm};
 use super::destination::{self, Destination, Target, aws, fd, null};
 use super::encryption::{self, Cryptor};
-use super::compression::{self, Compressor};
+use super::compression::{self, Compressor, gzip};
 
 use std::any;
 use std::fs;
@@ -59,14 +59,15 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
 
     let cryptor = match &job.encryption {
         None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,
-        Some(cfg) => match cfg {
+        Some(cfg) => match cfg.typ {
             _ => panic!("encryption type not implemented"),
         }
     };
 
     let compressor = match &job.compression {
         None => Box::new(compression::identity::IdentityCompressor::new(cryptor)) as Box<Compressor>,
-        Some(cfg) => match cfg {
+        Some(cfg) => match cfg.typ {
+            config::CompressionType::Gzip => Box::new(compression::gzip::GzipCompressor::new(cryptor)) as Box<Compressor>,
             _ => panic!("compression ")
         }
     };
@@ -80,8 +81,8 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     }
 
     result.and_then(|target| {
-        let target = target.finalize();
-        let target = target.finalize();
+        let target = target.finalize()?;
+        let target = target.finalize()?;
         info!("upload succeeded, finalizing target");
         target.finalize()
     })
