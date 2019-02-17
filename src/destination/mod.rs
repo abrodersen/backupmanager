@@ -2,8 +2,6 @@ pub(crate) mod aws;
 pub(crate) mod fd;
 pub(crate) mod null;
 
-use super::io::Chunk;
-
 use std::io;
 
 use failure::Error;

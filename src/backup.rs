@@ -2,7 +2,8 @@
 use super::config;
 use super::source::{self, Source, Snapshot, lvm};
 use super::destination::{self, Destination, Target, aws, fd, null};
-use super::io::{WriteChunker, Chunk};
+use super::encryption::{self, Cryptor};
+use super::compression::{self, Compressor};
 
 use std::any;
 use std::fs;
@@ -55,9 +56,23 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     let snapshot = source.snapshot()?;
     info!("allocating a target for backup data");
     let target = destination.allocate(job.name.as_ref())?;
+
+    let cryptor = match &job.encryption {
+        None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,
+        Some(cfg) => match cfg {
+            _ => panic!("encryption type not implemented"),
+        }
+    };
+
+    let compressor = match &job.compression {
+        None => Box::new(compression::identity::IdentityCompressor::new(cryptor)) as Box<Compressor>,
+        Some(cfg) => match cfg {
+            _ => panic!("compression ")
+        }
+    };
     
     info!("copying data from snapshot to target");
-    let result = upload_archive(snapshot.as_ref(), target);
+    let result = upload_archive(snapshot.as_ref(), compressor);
 
     debug!("tearing down snapshot");
     if let Err(e) = snapshot.destroy() {
@@ -65,12 +80,14 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     }
 
     result.and_then(|target| {
+        let target = target.finalize();
+        let target = target.finalize();
         info!("upload succeeded, finalizing target");
         target.finalize()
     })
 }
 
-fn upload_archive(snapshot: &Snapshot, target: Box<Target>) -> Result<Box<Target>, Error> {
+fn upload_archive(snapshot: &Snapshot, target: Box<Compressor>) -> Result<Box<Compressor>, Error> {
     let mut builder = tar::Builder::new(target);
     builder.follow_symlinks(false);
 

@@ -21,9 +21,10 @@ extern crate crossbeam;
 mod mount;
 mod config;
 mod source;
+mod compression;
+mod encryption;
 mod destination;
 mod backup;
-mod io;
 
 fn main() {
     env_logger::init();
