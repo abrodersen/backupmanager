@@ -1,4 +1,5 @@
 pub(crate) mod aws;
+pub(crate) mod fd;
 pub(crate) mod null;
 
 use super::io::Chunk;
