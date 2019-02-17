@@ -57,101 +57,56 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     let target = destination.allocate(job.name.as_ref())?;
     
     info!("copying data from snapshot to target");
-    let result = upload_archive(snapshot.as_ref(), target.as_ref());
+    let result = upload_archive(snapshot.as_ref(), target);
 
     debug!("tearing down snapshot");
     if let Err(e) = snapshot.destroy() {
         error!("failed to tear down snaphsot: {}", e);
     }
 
-    result.and_then(|_| {
+    result.and_then(|target| {
         info!("upload succeeded, finalizing target");
         target.finalize()
     })
 }
 
-fn upload_archive(snapshot: &Snapshot, target: &Target) -> Result<(), Error> {
-    let block_size = target.block_size();
-    debug!("chunk size is {} bytes", block_size);
-    let (tx, rx) = channel::bounded(0);
-    let writer = WriteChunker::new(block_size, tx);
+fn upload_archive(snapshot: &Snapshot, target: Box<Target>) -> Result<Box<Target>, Error> {
+    let mut builder = tar::Builder::new(target);
+    builder.follow_symlinks(false);
 
-    thread::scope(|s| {
-        let worker_thread = s.spawn(|_| {
-            trace!("new thread spawned");
-            loop {
-                trace!("listening for message");
-                match rx.recv() {
-                    Err(_) => {
-                        debug!("channel closed, exiting thread...");
-                        return Result::Ok::<(), Error>(());
-                    },
-                    Ok(chunk) => {
-                        let index = chunk.index();
-                        trace!("received chunk '{}' with {} bytes", index, chunk.len());
-                        target.upload(index, chunk)?;
-                        trace!("chunk '{}' uploaded successfully", index);
-                    }
-                }
-            }
-        });
+    let files = snapshot.files()?;
+    let base_path = files.base_path();
 
-        let mut builder = tar::Builder::new(writer);
-        builder.follow_symlinks(false);
+    debug!("enumerating snapshot files");
+    for entry in files {
+        let (rel_path, metadata) = entry?;
+        let full_path = base_path.join(&rel_path);
+        let file_type = metadata.file_type();
 
-        let files = snapshot.files()?;
-        let base_path = files.base_path();
-
-        debug!("enumerating snapshot files");
-        for entry in files {
-            let (rel_path, metadata) = entry?;
-            let full_path = base_path.join(&rel_path);
-            let file_type = metadata.file_type();
-
-            if file_type.is_dir() {
-                trace!("appending dir '{}' to archive", rel_path.display());
-                builder.append_dir(&rel_path, &full_path)?;
-            }
-
-            if file_type.is_file() {
-                trace!("appending file '{}' to archive", rel_path.display());
-                let mut file = fs::File::open(&full_path)?;
-                builder.append_file(&rel_path, &mut file)?;
-            }
-
-            if file_type.is_symlink() {
-                trace!("appending symlink '{}' to archive", rel_path.display());
-                let mut header = tar::Header::new_gnu();
-                header.set_path(rel_path)?;
-                header.set_metadata(&metadata);
-                let link = fs::read_link(&full_path)?;
-                header.set_link_name(link)?;
-            }
-            
+        if file_type.is_dir() {
+            trace!("appending dir '{}' to archive", rel_path.display());
+            builder.append_dir(&rel_path, &full_path)?;
         }
 
-        debug!("finalizing archive");
-        let writer = builder.into_inner()?;
-        debug!("sending last chunk");
-        writer.finish()?;
+        if file_type.is_file() {
+            trace!("appending file '{}' to archive", rel_path.display());
+            let mut file = fs::File::open(&full_path)?;
+            builder.append_file(&rel_path, &mut file)?;
+        }
 
-        trace!("waiting for worker threads to finish");
-        worker_thread.join()
-            .map_err(|inner| {
-                let r: &Error = inner.downcast_ref().expect("invalid error returned from thread");
-                format_err!("error returned from worker thread: {}", r)
-            })
-            .and_then(|x| x)?;
+        if file_type.is_symlink() {
+            trace!("appending symlink '{}' to archive", rel_path.display());
+            let mut header = tar::Header::new_gnu();
+            header.set_path(rel_path)?;
+            header.set_metadata(&metadata);
+            let link = fs::read_link(&full_path)?;
+            header.set_link_name(link)?;
+        }
+    }
 
-        Result::Ok::<(), Error>(())
-    })
-    .map_err(|inner| {
-        let r: &Error = inner.downcast_ref().expect("invalid error returned from thread");
-        format_err!("error returned from thread scope: {}", r)
-    })
-    .and_then(|x| x)?;
+    let target = builder.into_inner()?;
 
-    Ok(())
+    Ok(target)
 }
 
 

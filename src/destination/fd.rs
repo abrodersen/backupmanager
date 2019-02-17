@@ -24,59 +24,25 @@ impl super::Destination for FileDescriptorDestination {
 
     fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
         let fd = self.file.try_clone()?;
-        let state = WriteState::new(fd);
-        Ok(Box::new(FileDescriptorTarget { state: sync::Mutex::new(state) }))
-    }
-
-}
-
-struct WriteState {
-    file: fs::File,
-    pending_chunks: collections::BTreeMap<u64, crate::io::Chunk>,
-    current_chunk: u64,
-}
-
-impl WriteState {
-    fn new(file: fs::File) -> WriteState {
-        WriteState {
-            file: file,
-            pending_chunks: collections::BTreeMap::new(),
-            current_chunk: 0,
-        }
-    }
-
-    fn remove_current(&mut self) -> Option<crate::io::Chunk> {
-        let current = self.current_chunk;
-        self.pending_chunks.remove(&current)
+        Ok(Box::new(FileDescriptorTarget { file: fd }))
     }
 }
 
 pub struct FileDescriptorTarget {
-    state: sync::Mutex<WriteState>,
+    file: fs::File,
+}
+
+impl io::Write for FileDescriptorTarget {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.file.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 impl super::Target for FileDescriptorTarget {
-    fn block_size(&self) -> usize {
-        1 << 10
-    }
-
-    fn upload(&self, idx: u64, chunk: crate::io::Chunk) -> Result<(), Error> {
-        let mut state = self.state.lock().unwrap();
-        state.pending_chunks.insert(idx, chunk);
-
-        if idx == state.current_chunk {
-            while let Some(next_chunk) = state.remove_current() {
-                for result in next_chunk.wait() {
-                    let batch = result?;
-                    state.file.write_all(&batch)?;
-                }
-                state.current_chunk += 1;
-            }
-        }
-
-        Ok(())
-    }
-
     fn finalize(self: Box<Self>) -> Result<(), Error> {
         Ok(())
     }

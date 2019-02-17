@@ -14,9 +14,7 @@ pub trait Destination {
     fn allocate(&self, name: &str) -> Result<Box<Target>, Error>;
 }
 
-pub trait Target: Sync {
-    fn block_size(&self) -> usize;
-    fn upload(&self, idx: u64, chunk: Chunk) -> Result<(), Error>;
+pub trait Target: io::Write + Sync {
     fn finalize(self: Box<Self>) -> Result<(), Error>;
 }
 
