@@ -40,6 +40,8 @@ pub struct Destination {
 pub enum DestinationType {
     #[serde(rename = "s3")]
     S3 { region: String, bucket: String },
+    #[serde(rename = "file")]
+    File { path: String },
     #[serde(rename = "null")]
     Null,
 }

@@ -1,7 +1,7 @@
 
 use super::config;
 use super::source::{self, Source, Snapshot, lvm};
-use super::destination::{self, Destination, Target, aws, null};
+use super::destination::{self, Destination, Target, aws, fd, null};
 use super::io::{WriteChunker, Chunk};
 
 use std::any;
@@ -40,6 +40,13 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
         config::DestinationType::S3 { region, bucket } => {
             Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref())) as Box<Destination>
         },
+        config::DestinationType::File { path } => {
+            let file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(path)?;
+            Box::new(fd::FileDescriptorDestination::new(file)) as Box<Destination>
+        }
         config::DestinationType::Null => Box::new(null::NullDestination) as Box<Destination>,
         _ => panic!("destination not implemented"),
     };

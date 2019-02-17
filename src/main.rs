@@ -38,7 +38,7 @@ fn main() {
 
     let dest = config::Destination {
         name: "null".into(),
-        typ: config::DestinationType::Null,
+        typ: config::DestinationType::File { path: "/dev/stdout".into() },
     };
 
     let job = backup::Job {
