@@ -24,9 +24,7 @@ impl LogicalVolume {
 }
 
 impl Source for LogicalVolume {
-    type S = LogicalVolumeSnaphsot;
-
-    fn snapshot(&self) -> Result<LogicalVolumeSnaphsot, Error> {
+    fn snapshot(&self) -> Result<Box<Snapshot>, Error> {
         trace!("snapshot of lv {}/{} started", self.vg, self.lv);
 
         let id = Uuid::new_v4();
@@ -70,12 +68,12 @@ impl Source for LogicalVolume {
             return Err(e);
         }
 
-        Ok(LogicalVolumeSnaphsot {
+        Ok(Box::new(LogicalVolumeSnaphsot {
             vg: self.vg.clone(),
             lv: self.lv.clone(),
             id: id,
             dir: dir,
-        })
+        }))
     }
 }
 
@@ -95,7 +93,7 @@ impl Snapshot for LogicalVolumeSnaphsot {
         Files::new(&self.dir.path())
     }
 
-    fn destroy(self) -> Result<(), Error> {
+    fn destroy(self: Box<Self>) -> Result<(), Error> {
         mount::unmount(self.dir.path())?;
 
         let snapshot = snapshot_name(&self.lv, self.id);

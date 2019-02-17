@@ -2,6 +2,7 @@
 use super::config;
 use super::source::{self, Source, Snapshot, lvm};
 use super::destination::{self, Destination, Target, aws, null};
+use super::io::{WriteChunker, Chunk};
 
 use std::any;
 use std::fs;
@@ -31,15 +32,15 @@ pub struct Job {
 pub fn full_backup(job: &Job) -> Result<(), Error> {
     let source = match &job.source.typ {
         config::SourceType::LVM { volume_group, logical_volume } => {
-            lvm::LogicalVolume::new(volume_group.as_ref(), logical_volume.as_ref())
+            Box::new(lvm::LogicalVolume::new(volume_group.as_ref(), logical_volume.as_ref())) as Box<Source>
         }
     };
 
     let destination = match &job.destination.typ {
-        // config::DestinationType::S3 { region, bucket } => {
-        //     Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref()))
-        // },
-        config::DestinationType::Null => null::NullDestination,
+        config::DestinationType::S3 { region, bucket } => {
+            Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref())) as Box<Destination>
+        },
+        config::DestinationType::Null => Box::new(null::NullDestination) as Box<Destination>,
         _ => panic!("destination not implemented"),
     };
 
@@ -49,7 +50,7 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     let target = destination.allocate(job.name.as_ref())?;
     
     info!("copying data from snapshot to target");
-    let result = upload_archive(&snapshot, &target);
+    let result = upload_archive(snapshot.as_ref(), target.as_ref());
 
     debug!("tearing down snapshot");
     if let Err(e) = snapshot.destroy() {
@@ -62,9 +63,7 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     })
 }
 
-fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error> 
-    where S: Snapshot + ?Sized, T: Target + Sync + ?Sized
-{
+fn upload_archive(snapshot: &Snapshot, target: &Target) -> Result<(), Error> {
     let block_size = target.block_size();
     debug!("chunk size is {} bytes", block_size);
     let (tx, rx) = channel::bounded(0);
@@ -81,8 +80,8 @@ fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error>
                         return Result::Ok::<(), Error>(());
                     },
                     Ok(chunk) => {
-                        let index = chunk.idx;
-                        trace!("received chunk '{}' with {} bytes", index, chunk.buffer.len());
+                        let index = chunk.index();
+                        trace!("received chunk '{}' with {} bytes", index, chunk.len());
                         target.upload(index, chunk)?;
                         trace!("chunk '{}' uploaded successfully", index);
                     }
@@ -148,90 +147,4 @@ fn upload_archive<S, T>(snapshot: &S, target: &T) -> Result<(), Error>
     Ok(())
 }
 
-struct WriteChunker {
-    limit: usize,
-    wrote: usize,
-    buffer: Vec<u8>,
-    sender: channel::Sender<Chunk>,
-    idx: u64, 
-}
 
-impl WriteChunker {
-    fn new(limit: usize, sender: channel::Sender<Chunk>) -> WriteChunker {
-        WriteChunker {
-            limit: limit,
-            wrote: 0,
-            buffer: Vec::with_capacity(limit),
-            sender: sender,
-            idx: 0,
-        }
-    }
-
-    fn send_chunk(&mut self) -> Result<(), Error> {
-        let chunk = Chunk::new(self.idx, mem::replace(&mut self.buffer, Vec::with_capacity(self.limit)));
-        self.idx += 1;
-        debug!("flushing chunk {} to upload queue", chunk.idx);
-        self.sender.send(chunk).unwrap(); //TODO: propagate this error
-        Ok(())
-    }
-
-    fn finish(mut self) -> Result<(), Error> {
-        trace!("flushing last chunk");
-        self.send_chunk()?;
-        trace!("closing channel");
-        drop(self.sender);
-        trace!("wrote {} bytes", self.wrote);
-        Ok(())
-    }
-}
-
-impl io::Write for WriteChunker {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        trace!("write called");
-
-        if self.buffer.len() == self.limit {
-            self.send_chunk().unwrap();
-        }
-
-        let to_write = cmp::min(buf.len(), self.limit - self.buffer.len());
-        trace!("writing {} bytes to current chunk", to_write);
-        let written = self.buffer.write(&buf[..to_write])?;
-        self.wrote += written;
-        Ok(written)
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
-
-struct Chunk {
-    idx: u64,
-    read: bool,
-    buffer: Vec<u8>,
-}
-
-impl Chunk {
-    fn new(index: u64, data: Vec<u8>) -> Chunk {
-        Chunk {
-            idx: index,
-            read: false,
-            buffer: data,
-        }
-    }
-}
-
-impl stream::Stream for Chunk {
-    type Item = Vec<u8>;
-    type Error = io::Error;
-
-    fn poll(&mut self) -> Result<futures::Async<Option<Self::Item>>, Self::Error> {
-        if !self.read {
-            let data = mem::replace(&mut self.buffer, Vec::with_capacity(0));
-            self.read = true;
-            Ok(futures::Async::Ready(Some(data)))
-        } else {
-            Ok(futures::Async::Ready(None))
-        }
-    }
-}

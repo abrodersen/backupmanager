@@ -23,6 +23,7 @@ mod config;
 mod source;
 mod destination;
 mod backup;
+mod io;
 
 fn main() {
     env_logger::init();

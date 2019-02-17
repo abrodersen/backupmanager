@@ -37,9 +37,8 @@ pub struct AwsUpload {
 const BLOCK_SIZE: usize = 1 << 26;
 
 impl super::Destination for AwsBucket {
-    type Alloc = AwsUpload;
 
-    fn allocate(&self, name: &str) -> Result<Self::Alloc, Error> {
+    fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
         let region = aws::Region::from_str(name)?;
         let client = s3::S3Client::new(region);
 
@@ -50,13 +49,13 @@ impl super::Destination for AwsBucket {
         let response = client.create_multipart_upload(upload_req).sync()?;
         let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
 
-        Ok(AwsUpload { 
+        Ok(Box::new(AwsUpload { 
             bucket: self.bucket.clone(),
             key: name.into(), 
             id: id.into(), 
             client: client,
             state: sync::Mutex::new(s3::CompletedMultipartUpload::default()),
-        })
+        }))
     }
 }
 
@@ -65,15 +64,13 @@ impl super::Target for AwsUpload {
         BLOCK_SIZE
     }
 
-    fn upload<S>(&self, idx: u64, s: S) -> Result<(), Error> 
-        where S: stream::Stream<Item=Vec<u8>, Error=io::Error> + Send + 'static
-    {
+    fn upload(&self, idx: u64, chunk: crate::io::Chunk) -> Result<(), Error> {
         let mut upload_req = s3::UploadPartRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = self.key.clone();
         upload_req.upload_id = self.id.clone();
 
-        upload_req.body = Some(s3::StreamingBody::new(s));
+        upload_req.body = Some(s3::StreamingBody::new(chunk));
         upload_req.part_number = idx as i64;
 
         let result = self.client.upload_part(upload_req).sync()?;
@@ -91,7 +88,7 @@ impl super::Target for AwsUpload {
         Ok(())
     }
 
-    fn finalize(self) -> Result<(), Error> {
+    fn finalize(self: Box<Self>) -> Result<(), Error> {
         let mut complete_req = s3::CompleteMultipartUploadRequest::default();
         complete_req.bucket = self.bucket.clone();
         complete_req.key = self.key.clone();
