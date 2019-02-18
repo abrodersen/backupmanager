@@ -102,6 +102,7 @@ dependencies = [
  "log 0.4.5 (registry+https://github.com/rust-lang/crates.io-index)",
  "lvm2 0.1.0",
  "rusoto_core 0.36.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "rusoto_credential 0.15.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "rusoto_s3 0.36.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "sequoia-openpgp 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.80 (registry+https://github.com/rust-lang/crates.io-index)",

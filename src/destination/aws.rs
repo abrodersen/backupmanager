@@ -7,6 +7,7 @@ use std::io;
 use std::thread;
 
 use rusoto_core as aws;
+use rusoto_credential as auth;
 use rusoto_s3 as s3;
 use rusoto_s3::S3;
 
@@ -14,20 +15,24 @@ use crossbeam::channel;
 
 use failure::{self, Error};
 
-use futures::{stream, Stream};
+use futures::{Async, Future, Poll, stream, Stream};
 
 pub struct AwsBucket {
     region: String,
     bucket: String,
     prefix: String,
+    access_key_id: String,
+    secret_access_key: String,
 }
 
 impl AwsBucket {
-    pub fn new(region: &str, bucket: &str, prefix: &str) -> AwsBucket {
+    pub fn new(region: &str, bucket: &str, prefix: &str, key_id: &str, secret: &str) -> AwsBucket {
         AwsBucket { 
             region: region.into(),
             bucket: bucket.into(),
             prefix: prefix.into(),
+            access_key_id: key_id.into(),
+            secret_access_key: secret.into(),
         }
     }
 }
@@ -42,14 +47,50 @@ pub struct AwsUpload {
     state: sync::Arc<sync::Mutex<s3::CompletedMultipartUpload>>,
 }
 
+struct CredentialWrapper {
+    id: String,
+    secret: String,
+}
+
+struct CredentialFuture {
+    id: String,
+    secret: String,
+}
+
+impl aws::ProvideAwsCredentials for CredentialWrapper {
+    type Future = CredentialFuture;
+
+    fn credentials(&self) -> Self::Future {
+        CredentialFuture { id: self.id.clone(), secret: self.secret.clone() }
+    }
+}
+
+impl Future for CredentialFuture {
+    type Item = auth::AwsCredentials;
+    type Error = auth::CredentialsError;
+
+    fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
+        let creds = auth::AwsCredentials::new(self.id.as_ref(), self.secret.as_ref(), None, None);
+        Ok(Async::Ready(creds))
+    }
+}
+
 const BLOCK_SIZE: usize = 1 << 26;
 const NUM_THREADS: u8 = 1;
+
+impl AwsBucket {
+    fn get_client(&self) -> Result<s3::S3Client, Error> {
+        let client = aws::request::HttpClient::new()?;
+        let creds = CredentialWrapper { id: self.access_key_id.clone(), secret: self.secret_access_key.clone() };
+        let region = aws::Region::from_str(&self.region)?;
+        Ok(s3::S3Client::new_with(client, creds, region.clone()))
+    }
+}
 
 impl super::Destination for AwsBucket {
 
     fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
-        let region = aws::Region::from_str(name)?;
-        let client = s3::S3Client::new(region.clone());
+        let client = self.get_client()?;
         let name = format!("{}{}", self.prefix, name);
 
         let mut upload_req = s3::CreateMultipartUploadRequest::default();
@@ -63,16 +104,16 @@ impl super::Destination for AwsBucket {
         let writer = WriteChunker::new(BLOCK_SIZE, tx);
         let state = sync::Arc::new(sync::Mutex::new(s3::CompletedMultipartUpload::default()));
 
-        let threads = (0..NUM_THREADS).map(|idx| {
+        let threads = (0..NUM_THREADS).map(|_| {
 
             let bucket = self.bucket.clone();
             let key = name.to_string();
             let id = id.clone();
-            let client = s3::S3Client::new(region.clone());
+            let client = self.get_client()?;
             let state = state.clone();
             let rx = rx.clone();
 
-            thread::spawn(move || {
+            Ok(thread::spawn(move || {
                 trace!("new thread spawned");
                 loop {
                     trace!("listening for message");
@@ -89,8 +130,10 @@ impl super::Destination for AwsBucket {
                             upload_req.key = key.clone();
                             upload_req.upload_id = id.clone();
 
+                            upload_req.part_number = index as i64;
+                            upload_req.content_length = Some(chunk.len() as i64);
                             upload_req.body = Some(s3::StreamingBody::new(chunk));
-                            upload_req.part_number = idx as i64;
+                            trace!("upload request: {:?}", upload_req);
 
                             let result = client.upload_part(upload_req).sync()?;
                             
@@ -98,7 +141,7 @@ impl super::Destination for AwsBucket {
                                 let mut state = state.lock().unwrap();
                                 let mut parts = mem::replace(&mut state.parts, None).unwrap_or_else(|| Vec::new());
                                 parts.push(s3::CompletedPart {
-                                    part_number: Some(idx as i64),
+                                    part_number: Some(index as i64),
                                     e_tag: result.e_tag,
                                 });
                                 state.parts = Some(parts);
@@ -110,8 +153,8 @@ impl super::Destination for AwsBucket {
                 }
                 
                 Ok(())
-            })
-        }).collect();
+            }))
+        }).collect::<Result<Vec<_>, Error>>()?;
 
         Ok(Box::new(AwsUpload { 
             bucket: self.bucket.clone(),
@@ -141,8 +184,10 @@ impl super::Target for AwsUpload {
 
         let AwsUpload { chunker, threads, bucket, key, id, client, state } = { *self };
 
+        trace!("finalizing chunker");
         chunker.finish()?;
 
+        trace!("waiting for threads to finish");
         for thread in threads {
             thread.join()
                 .map_err(|_| format_err!("thread failed"))??;
@@ -154,9 +199,11 @@ impl super::Target for AwsUpload {
         complete_req.upload_id = id.clone();
         {
             let mut state = state.lock().unwrap();
+            trace!("finalizing s3 object with state: {:?}", state);
             complete_req.multipart_upload = Some(state.clone());
         }
 
+        info!("finalzing s3 object {}", key);
         client.complete_multipart_upload(complete_req).sync()?;
 
         Ok(())
@@ -178,7 +225,7 @@ impl WriteChunker {
             wrote: 0,
             buffer: Vec::with_capacity(limit),
             sender: sender,
-            idx: 0,
+            idx: 1,
         }
     }
 

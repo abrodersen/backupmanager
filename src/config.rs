@@ -49,7 +49,7 @@ pub struct Destination {
 #[serde(tag = "type")]
 pub enum DestinationType {
     #[serde(rename = "s3")]
-    S3 { region: String, bucket: String, prefix: String },
+    S3 { region: String, bucket: String, prefix: String, access_key_id: String, secret_access_key: String },
     #[serde(rename = "file")]
     File { path: String },
     #[serde(rename = "null")]

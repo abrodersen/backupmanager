@@ -39,8 +39,13 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     };
 
     let destination = match &job.destination.typ {
-        config::DestinationType::S3 { region, bucket, prefix, } => {
-            Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref(), prefix.as_ref())) as Box<Destination>
+        config::DestinationType::S3 { region, bucket, prefix, access_key_id, secret_access_key } => {
+            Box::new(aws::AwsBucket::new(
+                region.as_ref(), 
+                bucket.as_ref(), 
+                prefix.as_ref(),
+                access_key_id.as_ref(),
+                secret_access_key.as_ref())) as Box<Destination>
         },
         config::DestinationType::File { path } => {
             let file = fs::OpenOptions::new()
@@ -53,13 +58,10 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
         _ => panic!("destination not implemented"),
     };
 
-    info!("creating snapshot of source disk");
-    let snapshot = source.snapshot()?;
-
     let timestamp = Utc::now();
     let hostname = gethostname().into_string()
         .map_err(|_| format_err!("failed to convert hostname to string"))?;
-    let name = format!("{}/{}/{}.tar.gz.enc", hostname, job.name, timestamp.to_rfc3339());
+    let name = format!("{}/{}/{}.full", hostname, job.name, timestamp.to_rfc3339());
 
     info!("allocating a target for backup data");
     let target = destination.allocate(&name)?;
@@ -82,6 +84,9 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
             _ => panic!("compression ")
         }
     };
+
+    info!("creating snapshot of source disk");
+    let snapshot = source.snapshot()?;
     
     info!("copying data from snapshot to target");
     let result = upload_archive(snapshot.as_ref(), compressor);
