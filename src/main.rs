@@ -46,7 +46,7 @@ fn main() {
 
     let encr = config::Encryption {
         name: "pgp".into(),
-        typ: config::EncryptionType::Pgp { pubkey_file: "/dev/stdin".into() }
+        typ: config::EncryptionType::Pgp { pubkey_file: "/home/aaron/backup.pub".into() }
     };
 
     let comp = config::Compression {

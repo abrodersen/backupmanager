@@ -60,6 +60,10 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     let cryptor = match &job.encryption {
         None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,
         Some(cfg) => match cfg.typ {
+            config::EncryptionType::Pgp { ref pubkey_file } => {
+                let pgp = encryption::pgp::PgpCryptor::new(target, pubkey_file)?;
+                Box::new(pgp) as Box<Cryptor>
+            }
             _ => panic!("encryption type not implemented"),
         }
     };
