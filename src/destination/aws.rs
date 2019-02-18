@@ -19,13 +19,15 @@ use futures::{stream, Stream};
 pub struct AwsBucket {
     region: String,
     bucket: String,
+    prefix: String,
 }
 
 impl AwsBucket {
-    pub fn new(region: &str, bucket: &str) -> AwsBucket {
+    pub fn new(region: &str, bucket: &str, prefix: &str) -> AwsBucket {
         AwsBucket { 
             region: region.into(),
             bucket: bucket.into(),
+            prefix: prefix.into(),
         }
     }
 }
@@ -48,10 +50,11 @@ impl super::Destination for AwsBucket {
     fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
         let region = aws::Region::from_str(name)?;
         let client = s3::S3Client::new(region.clone());
+        let name = format!("{}{}", self.prefix, name);
 
         let mut upload_req = s3::CreateMultipartUploadRequest::default();
         upload_req.bucket = self.bucket.clone();
-        upload_req.key = name.into();
+        upload_req.key = name.clone();
 
         let response = client.create_multipart_upload(upload_req).sync()?;
         let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;

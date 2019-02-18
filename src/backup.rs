@@ -19,8 +19,9 @@ use failure::Error;
 use futures;
 use futures::stream;
 
-use crossbeam::channel;
-use crossbeam::thread;
+use chrono::prelude::*;
+
+use gethostname::gethostname;
 
 pub struct Job {
    pub name: String,
@@ -38,8 +39,8 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
     };
 
     let destination = match &job.destination.typ {
-        config::DestinationType::S3 { region, bucket } => {
-            Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref())) as Box<Destination>
+        config::DestinationType::S3 { region, bucket, prefix, } => {
+            Box::new(aws::AwsBucket::new(region.as_ref(), bucket.as_ref(), prefix.as_ref())) as Box<Destination>
         },
         config::DestinationType::File { path } => {
             let file = fs::OpenOptions::new()
@@ -54,8 +55,14 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
 
     info!("creating snapshot of source disk");
     let snapshot = source.snapshot()?;
+
+    let timestamp = Utc::now();
+    let hostname = gethostname().into_string()
+        .map_err(|_| format_err!("failed to convert hostname to string"))?;
+    let name = format!("{}/{}/{}.tar.gz.enc", hostname, job.name, timestamp.to_rfc3339());
+
     info!("allocating a target for backup data");
-    let target = destination.allocate(job.name.as_ref())?;
+    let target = destination.allocate(&name)?;
 
     let cryptor = match &job.encryption {
         None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,

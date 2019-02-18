@@ -22,10 +22,20 @@ pub fn load_config(path: &Path) -> Result<Config, Error> {
 
 #[derive(Deserialize)]
 pub struct Config {
-    destinations: Option<Vec<Destination>>,
-    sources: Option<Vec<Source>>,
-    compression: Option<Vec<Compression>>,
-    encryption: Option<Vec<Encryption>>,
+    pub jobs: Option<Vec<Job>>,
+    pub destinations: Option<Vec<Destination>>,
+    pub sources: Option<Vec<Source>>,
+    pub compression: Option<Vec<Compression>>,
+    pub encryption: Option<Vec<Encryption>>,
+}
+
+#[derive(Deserialize)]
+pub struct Job {
+    pub name: String,
+    pub source: String,
+    pub destination: String,
+    pub compression: Option<String>,
+    pub encryption: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -39,7 +49,7 @@ pub struct Destination {
 #[serde(tag = "type")]
 pub enum DestinationType {
     #[serde(rename = "s3")]
-    S3 { region: String, bucket: String },
+    S3 { region: String, bucket: String, prefix: String },
     #[serde(rename = "file")]
     File { path: String },
     #[serde(rename = "null")]
