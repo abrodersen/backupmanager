@@ -18,7 +18,6 @@ rusoto_core = "0.36"
 rusoto_credential = "0.15"
 rusoto_s3 = "0.36"
 futures = "0.1"
-tar = "0.4"
 crossbeam = "0.7"
 flate2 = "1.0"
 sequoia-openpgp = "0.3"
@@ -26,5 +25,9 @@ chrono = "0.4"
 nix = "0.13"
 gethostname = "0.2"
 structopt = "0.2"
+
+[dependencies.tar]
+git = "https://github.com/abrodersen/tar-rs.git"
+branch = "long-link-names"
 
 [dev-dependencies]

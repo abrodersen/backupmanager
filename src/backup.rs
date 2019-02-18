@@ -131,7 +131,10 @@ fn upload_archive(snapshot: &Snapshot, target: Box<Compressor>) -> Result<Box<Co
 
         if file_type.is_symlink() {
             trace!("appending symlink '{}' to archive", rel_path.display());
-            builder.append_path(&rel_path)?;
+            let mut header = tar::Header::new_gnu();
+            header.set_metadata(&metadata);
+            let link = fs::read_link(&full_path)?;
+            builder.append_link(&mut header, rel_path, link)?;
         }
     }
 
