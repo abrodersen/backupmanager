@@ -75,7 +75,6 @@ impl Future for CredentialFuture {
     }
 }
 
-const BLOCK_SIZE: usize = 1 << 26;
 const NUM_THREADS: u8 = 1;
 
 impl AwsBucket {
@@ -87,9 +86,14 @@ impl AwsBucket {
     }
 }
 
+fn get_next_pow2(s: u64) -> u64 {
+    let log = (s as f64).log2().ceil() as u64;
+    1 << log
+}
+
 impl super::Destination for AwsBucket {
 
-    fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
+    fn allocate(&self, name: &str, size_hint: u64) -> Result<Box<super::Target>, Error> {
         let client = self.get_client()?;
         let name = format!("{}{}", self.prefix, name);
 
@@ -100,9 +104,15 @@ impl super::Destination for AwsBucket {
         let response = client.create_multipart_upload(upload_req).sync()?;
         let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
 
+        let hint_size = get_next_pow2(f64::ceil((size_hint as f64) / 10000.0) as u64);
+        let block_size = cmp::max(1 << 26, hint_size as usize);
+        info!("using parts of size {}", block_size);
+
         let (tx, rx) = channel::bounded(0);
-        let writer = WriteChunker::new(BLOCK_SIZE, tx);
+        let writer = WriteChunker::new(block_size, tx);
         let state = sync::Arc::new(sync::Mutex::new(s3::CompletedMultipartUpload::default()));
+
+        info!("allocating {} upload threads", NUM_THREADS);
 
         let threads = (0..NUM_THREADS).map(|_| {
 

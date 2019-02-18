@@ -22,6 +22,7 @@ extern crate flate2;
 extern crate sequoia_openpgp as openpgp;
 extern crate chrono;
 extern crate gethostname;
+extern crate nix;
 #[macro_use]
 extern crate structopt;
 
@@ -32,6 +33,7 @@ mod compression;
 mod encryption;
 mod destination;
 mod backup;
+mod stat;
 
 use std::path;
 

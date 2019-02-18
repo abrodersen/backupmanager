@@ -63,8 +63,9 @@ pub fn full_backup(job: &Job) -> Result<(), Error> {
         .map_err(|_| format_err!("failed to convert hostname to string"))?;
     let name = format!("{}/{}/{}.full", hostname, job.name, timestamp.to_rfc3339());
 
-    info!("allocating a target for backup data");
-    let target = destination.allocate(&name)?;
+    let size_hint = source.size_hint()?;
+    info!("allocating a target with size hint {} for backup data", size_hint);
+    let target = destination.allocate(&name, size_hint)?;
 
     let cryptor = match &job.encryption {
         None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,
@@ -130,11 +131,7 @@ fn upload_archive(snapshot: &Snapshot, target: Box<Compressor>) -> Result<Box<Co
 
         if file_type.is_symlink() {
             trace!("appending symlink '{}' to archive", rel_path.display());
-            let mut header = tar::Header::new_gnu();
-            header.set_path(rel_path)?;
-            header.set_metadata(&metadata);
-            let link = fs::read_link(&full_path)?;
-            header.set_link_name(link)?;
+            builder.append_path(&rel_path)?;
         }
     }
 

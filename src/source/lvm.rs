@@ -24,6 +24,15 @@ impl LogicalVolume {
 }
 
 impl Source for LogicalVolume {
+
+    fn size_hint(&self) -> Result<u64, Error> {
+        let mut path = PathBuf::new();
+        path.push("/dev");
+        path.push(&self.vg);
+        path.push(&self.lv);
+        crate::stat::get_fs_size(path)
+    }
+
     fn snapshot(&self) -> Result<Box<Snapshot>, Error> {
         trace!("snapshot of lv {}/{} started", self.vg, self.lv);
 

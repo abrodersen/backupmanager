@@ -23,6 +23,7 @@ crossbeam = "0.7"
 flate2 = "1.0"
 sequoia-openpgp = "0.3"
 chrono = "0.4"
+nix = "0.13"
 gethostname = "0.2"
 structopt = "0.2"
 

@@ -10,7 +10,7 @@ use failure::Error;
 use futures::stream;
 
 pub trait Destination {
-    fn allocate(&self, name: &str) -> Result<Box<Target>, Error>;
+    fn allocate(&self, name: &str, size_hint: u64) -> Result<Box<Target>, Error>;
 }
 
 pub trait Target: io::Write + Sync {

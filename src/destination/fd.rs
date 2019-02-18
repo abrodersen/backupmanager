@@ -22,13 +22,12 @@ impl FileDescriptorDestination {
 
 impl super::Destination for FileDescriptorDestination {
 
-    fn allocate(&self, name: &str) -> Result<Box<super::Target>, Error> {
+    fn allocate(&self, name: &str, _size_hint: u64) -> Result<Box<super::Target>, Error> {
         let fd = self.file.try_clone()?;
         Ok(Box::new(FileDescriptorTarget { file: fd }))
     }
 }
 
-#[derive(Debug)]
 pub struct FileDescriptorTarget {
     file: fs::File,
 }
