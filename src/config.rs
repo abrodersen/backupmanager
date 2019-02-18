@@ -85,7 +85,7 @@ pub struct Encryption {
 #[serde(tag = "type")]
 pub enum EncryptionType {
     #[serde(rename = "pgp")]
-    PGP { key_id: String }
+    Pgp { pubkey_file: String }
 }
 
 mod test {

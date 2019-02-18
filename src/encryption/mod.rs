@@ -1,4 +1,5 @@
 pub(crate) mod identity;
+pub(crate) mod pgp;
 
 use std::io;
 

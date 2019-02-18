@@ -18,6 +18,7 @@ extern crate futures;
 extern crate tar;
 extern crate crossbeam;
 extern crate flate2;
+extern crate sequoia_openpgp as openpgp;
 
 mod mount;
 mod config;
@@ -43,6 +44,11 @@ fn main() {
         typ: config::DestinationType::File { path: "/dev/stdout".into() },
     };
 
+    let encr = config::Encryption {
+        name: "pgp".into(),
+        typ: config::EncryptionType::Pgp { pubkey_file: "/dev/stdin".into() }
+    };
+
     let comp = config::Compression {
         name: "gzip".into(),
         typ: config::CompressionType::Gzip,
@@ -52,7 +58,7 @@ fn main() {
         name: "test-backup".into(),
         source: source,
         destination: dest,
-        encryption: None,
+        encryption: Some(encr),
         compression: Some(comp),
     };
 

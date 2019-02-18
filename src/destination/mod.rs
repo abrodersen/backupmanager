@@ -3,6 +3,7 @@ pub(crate) mod fd;
 pub(crate) mod null;
 
 use std::io;
+use std::fmt;
 
 use failure::Error;
 

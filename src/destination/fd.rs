@@ -28,6 +28,7 @@ impl super::Destination for FileDescriptorDestination {
     }
 }
 
+#[derive(Debug)]
 pub struct FileDescriptorTarget {
     file: fs::File,
 }
