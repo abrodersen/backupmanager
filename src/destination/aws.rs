@@ -134,7 +134,7 @@ impl super::Destination for AwsBucket {
                         },
                         Ok(chunk) => {
                             let index = chunk.index();
-                            trace!("received chunk '{}' with {} bytes", index, chunk.len());
+                            trace!("received chunk {} with {} bytes", index, chunk.len());
                             let mut upload_req = s3::UploadPartRequest::default();
                             upload_req.bucket = bucket.clone();
                             upload_req.key = key.clone();
@@ -157,7 +157,7 @@ impl super::Destination for AwsBucket {
                                 state.parts = Some(parts);
                             }
 
-                            trace!("chunk '{}' uploaded successfully", index);
+                            debug!("chunk {} uploaded successfully", index);
                         }
                     }
                 }

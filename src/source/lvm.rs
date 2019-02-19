@@ -1,5 +1,6 @@
 
 use std::path::PathBuf;
+use std::cmp;
 
 use super::{Source, Snapshot, Files};
 use mount;
@@ -34,25 +35,30 @@ impl Source for LogicalVolume {
     }
 
     fn snapshot(&self) -> Result<Box<Snapshot>, Error> {
-        trace!("snapshot of lv {}/{} started", self.vg, self.lv);
+        trace!("snapshot of lv '{}/{}' started", self.vg, self.lv);
 
         let id = Uuid::new_v4();
         let ctx = Context::new();
         trace!("scanning LVM volumes");
         ctx.scan();
 
-        trace!("opening vg {}", self.vg);
+        trace!("opening vg '{}'", self.vg);
         let vg = ctx.open_volume_group(&self.vg, &Mode::ReadWrite);
 
         trace!("listing logical volumes");
         let volume = vg.list_logical_volumes()
             .into_iter()
-            .find(|lv| lv.name() == self.lv);
+            .find(|lv| lv.name() == self.lv)
+            .ok_or_else(|| format_err!("snapshot not found"))?;
+
+        let size = volume.size();
+        debug!("lvm volume is {} bytes", size);
+        let snapshot_size = cmp::max(size / 64, 1 << 26);
+        debug!("using snapshot size of {} bytes", snapshot_size);
 
         let name = snapshot_name(&self.lv, id);
-        let snapshot = volume
-            .ok_or_else(|| format_err!("snapshot not found"))
-            .map(|v| v.snapshot(&name, 1 << 30))?;
+        debug!("creating snapshot with name '{}'", &name);
+        let snapshot = volume.snapshot(&name, snapshot_size);
 
         debug!("created snapshot '{}'", snapshot.name());
 
