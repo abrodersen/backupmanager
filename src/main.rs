@@ -23,7 +23,6 @@ extern crate sequoia_openpgp as openpgp;
 extern crate chrono;
 extern crate gethostname;
 extern crate nix;
-#[macro_use]
 extern crate structopt;
 
 mod mount;

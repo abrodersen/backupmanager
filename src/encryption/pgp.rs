@@ -1,9 +1,5 @@
 
 use std::io;
-use std::iter;
-use std::fs;
-use std::thread;
-use std::ops;
 use std::sync;
 
 use openpgp::parse::Parse;
@@ -13,7 +9,7 @@ use openpgp::serialize::writer;
 
 use destination::Target;
 
-use failure::{Fail, Error, ResultExt};
+use failure::{Error};
 
 pub struct PgpCryptor {
     target: sync::Arc<sync::Mutex<Box<Target>>>,

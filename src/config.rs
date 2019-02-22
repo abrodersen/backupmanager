@@ -98,6 +98,7 @@ pub enum EncryptionType {
     Pgp { pubkey_file: String }
 }
 
+#[cfg(test)]
 mod test {
     use super::*;
     use std::env;

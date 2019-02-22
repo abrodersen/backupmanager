@@ -1,17 +1,15 @@
 
 use std::fs;
-use std::io::{self, Write};
+use std::io;
 use std::sync::atomic;
 
 use failure::Error;
-
-use futures::{stream, Stream};
 
 pub struct NullDestination;
 
 impl super::Destination for NullDestination {
 
-    fn allocate(&self, name: &str, _size_hint: u64) -> Result<Box<super::Target>, Error> {
+    fn allocate(&self, _: &str, _: u64) -> Result<Box<super::Target>, Error> {
         let file = fs::OpenOptions::new()
             .write(true)
             .open("/dev/null")?;

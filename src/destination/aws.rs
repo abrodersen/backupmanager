@@ -13,9 +13,9 @@ use rusoto_s3::S3;
 
 use crossbeam::channel;
 
-use failure::{self, Error};
+use failure::{self, Error, ResultExt};
 
-use futures::{Async, Future, Poll, stream, Stream};
+use futures::{Async, Future, Poll, stream};
 
 pub struct AwsBucket {
     region: String,
@@ -148,7 +148,7 @@ impl super::Destination for AwsBucket {
                             let result = client.upload_part(upload_req).sync()?;
                             
                             {
-                                let mut state = state.lock().unwrap();
+                                let mut state = state.lock().expect("mutex has been poisoned");
                                 let mut parts = mem::replace(&mut state.parts, None).unwrap_or_else(|| Vec::new());
                                 parts.push(s3::CompletedPart {
                                     part_number: Some(index as i64),
@@ -161,8 +161,6 @@ impl super::Destination for AwsBucket {
                         }
                     }
                 }
-                
-                Ok(())
             }))
         }).collect::<Result<Vec<_>, Error>>()?;
 
@@ -208,7 +206,7 @@ impl super::Target for AwsUpload {
         complete_req.key = key.clone();
         complete_req.upload_id = id.clone();
         {
-            let mut state = state.lock().unwrap();
+            let state = state.lock().expect("mutex has been poisoned");
             trace!("finalizing s3 object with state: {:?}", state);
             complete_req.multipart_upload = Some(state.clone());
         }
@@ -243,7 +241,8 @@ impl WriteChunker {
         let chunk = Chunk::new(self.idx, mem::replace(&mut self.buffer, Vec::with_capacity(self.limit)));
         self.idx += 1;
         debug!("flushing chunk {} to upload queue", chunk.idx);
-        self.sender.send(chunk).unwrap(); //TODO: propagate this error
+        self.sender.send(chunk)
+            .context("faild to send chunk")?;
         Ok(())
     }
 
@@ -262,7 +261,8 @@ impl io::Write for WriteChunker {
         trace!("write called");
 
         if self.buffer.len() == self.limit {
-            self.send_chunk().unwrap();
+            self.send_chunk()
+                .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         }
 
         let to_write = cmp::min(buf.len(), self.limit - self.buffer.len());

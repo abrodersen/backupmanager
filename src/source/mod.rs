@@ -9,11 +9,11 @@ use std::path::{Path, PathBuf};
 use failure::Error;
 
 pub trait Source {
-    fn size_hint(&self) -> Result<u64, Error>;
     fn snapshot(&self) -> Result<Box<Snapshot>, Error>;
 }
 
 pub trait Snapshot {
+    fn size_hint(&self) -> Result<u64, Error>;
     fn files<'a>(&'a self) -> Result<Files<'a>, Error>;
     fn destroy(self: Box<Self>) -> Result<(), Error>;
 }
