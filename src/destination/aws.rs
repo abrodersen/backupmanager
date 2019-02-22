@@ -75,7 +75,7 @@ impl Future for CredentialFuture {
     }
 }
 
-const NUM_THREADS: u8 = 1;
+const NUM_THREADS: u8 = 4;
 
 impl AwsBucket {
     fn get_client(&self) -> Result<s3::S3Client, Error> {
