@@ -25,6 +25,7 @@ chrono = "0.4"
 nix = "0.13"
 gethostname = "0.2"
 structopt = "0.2"
+exponential-backoff = "0.2.2"
 
 [dependencies.tar]
 git = "https://github.com/abrodersen/tar-rs.git"

@@ -5,6 +5,7 @@ use std::str::FromStr;
 use std::mem;
 use std::io;
 use std::thread;
+use std::time;
 
 use rusoto_core as aws;
 use rusoto_credential as auth;
@@ -16,6 +17,8 @@ use crossbeam::channel;
 use failure::{self, Error, ResultExt};
 
 use futures::{Async, Future, Poll, stream};
+
+use exponential_backoff::Backoff;
 
 pub struct AwsBucket {
     region: String,
@@ -44,6 +47,7 @@ pub struct AwsUpload {
     client: s3::S3Client,
     chunker: WriteChunker,
     threads: Vec<thread::JoinHandle<Result<(), Error>>>,
+    errors: channel::Receiver<Error>,
     state: sync::Arc<sync::Mutex<s3::CompletedMultipartUpload>>,
 }
 
@@ -76,6 +80,7 @@ impl Future for CredentialFuture {
 }
 
 const NUM_THREADS: u8 = 4;
+const MAX_RETRIES: u32 = 256;
 
 impl AwsBucket {
     fn get_client(&self) -> Result<s3::S3Client, Error> {
@@ -109,6 +114,7 @@ impl super::Destination for AwsBucket {
         info!("using parts of size {}", block_size);
 
         let (tx, rx) = channel::bounded(0);
+        let (tx_err, rx_err) = channel::bounded(0);
         let writer = WriteChunker::new(block_size, tx);
         let state = sync::Arc::new(sync::Mutex::new(s3::CompletedMultipartUpload::default()));
 
@@ -122,6 +128,7 @@ impl super::Destination for AwsBucket {
             let client = self.get_client()?;
             let state = state.clone();
             let rx = rx.clone();
+            let tx_err = tx_err.clone();
 
             Ok(thread::spawn(move || {
                 trace!("new thread spawned");
@@ -134,18 +141,41 @@ impl super::Destination for AwsBucket {
                         },
                         Ok(chunk) => {
                             let index = chunk.index();
-                            trace!("received chunk {} with {} bytes", index, chunk.len());
-                            let mut upload_req = s3::UploadPartRequest::default();
-                            upload_req.bucket = bucket.clone();
-                            upload_req.key = key.clone();
-                            upload_req.upload_id = id.clone();
+                            let size = chunk.len();
+                            trace!("received chunk {} with {} bytes", index, size);
 
-                            upload_req.part_number = index as i64;
-                            upload_req.content_length = Some(chunk.len() as i64);
-                            upload_req.body = Some(s3::StreamingBody::new(chunk));
-                            trace!("upload request: {:?}", upload_req);
+                            let backoff = Backoff::new(MAX_RETRIES)
+                                .timeout_range(time::Duration::from_millis(100), time::Duration::from_secs(10))
+                                .jitter(0.3)
+                                .factor(2);
 
-                            let result = client.upload_part(upload_req).sync()?;
+                            let mut backoff_iter = backoff.iter();
+
+                            let result = loop {
+                                let mut upload_req = s3::UploadPartRequest::default();
+                                upload_req.bucket = bucket.clone();
+                                upload_req.key = key.clone();
+                                upload_req.upload_id = id.clone();
+
+                                upload_req.part_number = index as i64;
+                                upload_req.content_length = Some(size as i64);
+                                upload_req.body = Some(s3::StreamingBody::new(chunk.clone()));
+                                trace!("upload request: {:?}", upload_req);
+
+                                match client.upload_part(upload_req).sync() {
+                                    Ok(r) => break r,
+                                    Err(e) => {
+                                        error!("upload request failed: {}", e);
+                                        match backoff_iter.next().and_then(|x| x) {
+                                            Some(wait) => thread::sleep(wait),
+                                            None => {
+                                                tx_err.send(e.into()).expect("failed to send thread error");
+                                                return Err(format_err!("upload retry limit exceeded")); 
+                                            }
+                                        }
+                                    }
+                                }
+                            };
                             
                             {
                                 let mut state = state.lock().expect("mutex has been poisoned");
@@ -154,6 +184,7 @@ impl super::Destination for AwsBucket {
                                     part_number: Some(index as i64),
                                     e_tag: result.e_tag,
                                 });
+                                parts.sort_unstable_by(|x, y| x.part_number.unwrap().cmp(&y.part_number.unwrap()));
                                 state.parts = Some(parts);
                             }
 
@@ -171,6 +202,7 @@ impl super::Destination for AwsBucket {
             client: client,
             chunker: writer,
             threads: threads,
+            errors: rx_err,
             state: state,
         }))
     }
@@ -178,6 +210,14 @@ impl super::Destination for AwsBucket {
 
 impl io::Write for AwsUpload {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        match self.errors.try_recv() {
+            Ok(e) => {
+                error!("received error message from upload thread: {}", e);
+                return Err(io::Error::new(io::ErrorKind::Other, e));
+            },
+            _ => (),
+        };
+
         self.chunker.write(buf)
     }
 
@@ -190,7 +230,7 @@ impl super::Target for AwsUpload {
 
     fn finalize(self: Box<Self>) -> Result<(), Error> {
 
-        let AwsUpload { chunker, threads, bucket, key, id, client, state } = { *self };
+        let AwsUpload { chunker, threads, bucket, key, id, client, state, .. } = { *self };
 
         trace!("finalizing chunker");
         chunker.finish()?;
@@ -207,6 +247,7 @@ impl super::Target for AwsUpload {
         complete_req.upload_id = id.clone();
         {
             let state = state.lock().expect("mutex has been poisoned");
+            let state = state.clone();
             trace!("finalizing s3 object with state: {:?}", state);
             complete_req.multipart_upload = Some(state.clone());
         }
@@ -277,6 +318,7 @@ impl io::Write for WriteChunker {
     }
 }
 
+#[derive(Clone)]
 pub struct Chunk {
     idx: u64,
     read: bool,

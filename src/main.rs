@@ -24,6 +24,7 @@ extern crate chrono;
 extern crate gethostname;
 extern crate nix;
 extern crate structopt;
+extern crate exponential_backoff;
 
 mod mount;
 mod config;
