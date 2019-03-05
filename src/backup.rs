@@ -1,7 +1,7 @@
 
 use super::config;
 use super::source::{Source, Snapshot, lvm};
-use super::destination::{Destination, aws, fd, null};
+use super::destination::{Destination, TargetDescriptor, TargetType, aws, fd, null};
 use super::encryption::{self, Cryptor};
 use super::compression::{self, Compressor};
 
@@ -81,10 +81,10 @@ fn create_pipeline(job: &Job, size_hint: u64) -> Result<Box<Compressor>, Error> 
     let timestamp = Utc::now();
     let hostname = gethostname().into_string()
         .map_err(|_| format_err!("failed to convert hostname to string"))?;
-    let name = format!("{}/{}/{}.full", hostname, job.name, timestamp.to_rfc3339());
+    let desc = TargetDescriptor::new(hostname, job.name.as_ref(), timestamp, TargetType::Full);
 
     info!("allocating a target with size hint {} for backup data", size_hint);
-    let target = destination.allocate(&name, size_hint)?;
+    let target = destination.allocate(&desc, size_hint)?;
 
     let cryptor = match &job.encryption {
         None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,

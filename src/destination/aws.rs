@@ -7,6 +7,8 @@ use std::io;
 use std::thread;
 use std::time;
 
+use super::*;
+
 use rusoto_core as aws;
 use rusoto_credential as auth;
 use rusoto_s3 as s3;
@@ -80,7 +82,7 @@ impl Future for CredentialFuture {
 }
 
 const NUM_THREADS: u8 = 4;
-const MAX_RETRIES: u32 = 256;
+const MAX_RETRIES: u32 = 32;
 
 impl AwsBucket {
     fn get_client(&self) -> Result<s3::S3Client, Error> {
@@ -89,6 +91,52 @@ impl AwsBucket {
         let region = aws::Region::from_str(&self.region)?;
         Ok(s3::S3Client::new_with(client, creds, region.clone()))
     }
+    
+    fn get_object_dir(&self, host: &str, job: &str) -> String {
+        format!("{}/{}/{}/", self.prefix, host, job)
+    }
+
+    fn get_object_name(&self, desc: &TargetDescriptor) -> String {
+        let prefix = self.get_object_dir(&desc.host, &desc.job);
+        let ext = match desc.typ {
+            TargetType::Full => "full",
+            TargetType::Differential => "diff",
+        };
+        format!("{}{}.{}", prefix, desc.timestamp.to_rfc3339(), ext)
+    }
+
+    fn parse_object(&self, host: &str, job: &str, obj: &s3::Object) -> Option<TargetDescriptor> {
+        let key = match obj.key {
+            Some(ref x) => x.to_string(),
+            _ => return None,
+        };
+
+        let prefix = self.get_object_dir(host, job);
+        let name = key.trim_start_matches(&prefix);
+        let parts: Vec<&str> = name.splitn(2, ".").collect();
+
+        if parts.len() < 2 {
+            return None;
+        }
+
+        let timestamp = match DateTime::parse_from_rfc3339(parts[0]) {
+            Ok(t) => DateTime::from_utc(t.naive_utc(), Utc),
+            Err(_) => return None,
+        };
+
+        let typ = match parts[1] {
+            "full" => TargetType::Full,
+            "diff" => TargetType::Differential,
+            _ => return None,
+        };
+
+        Some(TargetDescriptor {
+            host: host.into(),
+            job: job.into(),
+            timestamp: timestamp.into(),
+            typ: typ,
+        })
+    }
 }
 
 fn get_next_pow2(s: u64) -> u64 {
@@ -96,11 +144,48 @@ fn get_next_pow2(s: u64) -> u64 {
     1 << log
 }
 
-impl super::Destination for AwsBucket {
 
-    fn allocate(&self, name: &str, size_hint: u64) -> Result<Box<super::Target>, Error> {
+
+impl Destination for AwsBucket {
+
+    fn list_backups(&self, search: &BackupSearchRequest) -> Result<Vec<TargetDescriptor>, Error> {
         let client = self.get_client()?;
-        let name = format!("{}{}", self.prefix, name);
+
+        let mut backups = Vec::new();
+        let mut token = None;
+
+        loop {
+            let mut request = s3::ListObjectsV2Request::default();
+            request.bucket = self.bucket.clone();
+            request.continuation_token = token.clone();
+            request.prefix = Some(self.get_object_dir(&search.host, &search.job));
+
+            let result = client.list_objects_v2(request).sync()?;
+            if let Some(objs) = result.contents {
+                backups.extend(objs.iter().filter_map(|obj| self.parse_object(&search.host, &search.job, obj)));
+            }
+
+            if !result.is_truncated.unwrap_or(false) {
+                break;
+            }
+
+            token = result.next_continuation_token;
+        }
+
+        Ok(backups)
+    }
+
+    fn fetch_manifest(&self, desc: &TargetDescriptor) -> Result<Vec<u8>, Error> {
+        unimplemented!();
+    }
+
+    fn upload_manifest(&self, desc: &TargetDescriptor, data: &[u8]) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn allocate(&self, desc: &TargetDescriptor, size_hint: u64) -> Result<Box<super::Target>, Error> {
+        let client = self.get_client()?;
+        let name = self.get_object_name(desc);
 
         let mut upload_req = s3::CreateMultipartUploadRequest::default();
         upload_req.bucket = self.bucket.clone();
@@ -226,7 +311,7 @@ impl io::Write for AwsUpload {
     }
 }
 
-impl super::Target for AwsUpload {
+impl Target for AwsUpload {
 
     fn finalize(self: Box<Self>) -> Result<(), Error> {
 

@@ -18,7 +18,19 @@ impl FileDescriptorDestination {
 
 impl super::Destination for FileDescriptorDestination {
 
-    fn allocate(&self, _: &str, _: u64) -> Result<Box<super::Target>, Error> {
+    fn list_backups(&self, request: &super::BackupSearchRequest) -> Result<Vec<super::TargetDescriptor>, Error> {
+        unimplemented!();
+    }
+
+    fn fetch_manifest(&self, desc: &super::TargetDescriptor) -> Result<Vec<u8>, Error> {
+        unimplemented!();
+    }
+
+    fn upload_manifest(&self, desc: &super::TargetDescriptor, data: &[u8]) -> Result<(), Error> {
+        unimplemented!();
+    }
+
+    fn allocate(&self, _: &super::TargetDescriptor, _: u64) -> Result<Box<super::Target>, Error> {
         let fd = self.file.try_clone()?;
         Ok(Box::new(FileDescriptorTarget { file: fd }))
     }
