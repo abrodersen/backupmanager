@@ -26,6 +26,8 @@ nix = "0.13"
 gethostname = "0.2"
 structopt = "0.2"
 exponential-backoff = "0.2.2"
+hex = "0.3.2"
+rand = "0.6.5"
 
 [dependencies.tar]
 git = "https://github.com/abrodersen/tar-rs.git"

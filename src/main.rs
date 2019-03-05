@@ -25,6 +25,8 @@ extern crate gethostname;
 extern crate nix;
 extern crate structopt;
 extern crate exponential_backoff;
+extern crate hex;
+extern crate rand;
 
 mod mount;
 mod config;
@@ -34,6 +36,7 @@ mod encryption;
 mod destination;
 mod backup;
 mod stat;
+mod manifest;
 
 use std::path;
 

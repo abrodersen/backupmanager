@@ -3,7 +3,7 @@ use std::cmp;
 use std::sync;
 use std::str::FromStr;
 use std::mem;
-use std::io;
+use std::io::{self, Read};
 use std::thread;
 use std::time;
 
@@ -176,11 +176,34 @@ impl Destination for AwsBucket {
     }
 
     fn fetch_manifest(&self, desc: &TargetDescriptor) -> Result<Vec<u8>, Error> {
-        unimplemented!();
+        let client = self.get_client()?;
+        let name = format!("{}.manifest", self.get_object_name(&desc));
+
+        let mut get_req = s3::GetObjectRequest::default();
+        get_req.bucket = self.bucket.clone();
+        get_req.key = name;
+
+        let resp = client.get_object(get_req).sync()?;
+        let body = resp.body.ok_or_else(|| format_err!("no body on response"))?;
+        let mut buffer = Vec::new();
+        body.into_blocking_read().read_to_end(&mut buffer)?;
+
+        Ok(buffer)
     }
 
     fn upload_manifest(&self, desc: &TargetDescriptor, data: &[u8]) -> Result<(), Error> {
-        unimplemented!();
+        let client = self.get_client()?;
+        let name = format!("{}.manifest", self.get_object_name(&desc));
+        let body: Vec<_> = data.iter().collect();
+
+        let mut upload_req = s3::PutObjectRequest::default();
+        upload_req.bucket = self.bucket.clone();
+        upload_req.key = name;
+        upload_req.content_length = Some(body.len() as i64);
+
+        let _ = client.put_object(upload_req).sync()?;
+
+        Ok(())
     }
 
     fn allocate(&self, desc: &TargetDescriptor, size_hint: u64) -> Result<Box<super::Target>, Error> {
