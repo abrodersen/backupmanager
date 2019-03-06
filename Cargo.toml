@@ -28,6 +28,8 @@ structopt = "0.2"
 exponential-backoff = "0.2.2"
 hex = "0.3.2"
 rand = "0.6.5"
+rust-argon2 = "0.4.0"
+bincode = "1.1.2"
 
 [dependencies.tar]
 git = "https://github.com/abrodersen/tar-rs.git"
