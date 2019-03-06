@@ -82,7 +82,7 @@ impl Manifest {
 
         loop {
             line.clear();
-            if reader.read_line(&mut line)? > 0 {
+            if reader.read_line(&mut line)? == 0 {
                 break;
             }
 
