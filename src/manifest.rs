@@ -1,6 +1,7 @@
 
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read, Write};
+use std::convert::From;
 
 use failure::Error;
 
@@ -9,9 +10,10 @@ use rand::Rng;
 
 use argon2::{self, Config};
 
+#[derive(Eq, PartialEq, Debug)]
 pub struct Manifest {
     salt: Key,
-    keys: HashSet<Key>,
+    keys: BTreeSet<Key>,
     lanes: u32,
     mem_cost: u32,
     time_cost: u32,
@@ -19,10 +21,10 @@ pub struct Manifest {
     version: argon2::Version,
 }
 
-const KEY_LENGTH: usize = 32;
+const KEY_LENGTH: usize = 16;
 const DEFAULT_PARALLELISM: u32 = 8;
 const DEFAULT_MEM_COST: u32 = 1 << 18;
-const DEFAULT_TIME_COST: u32 = 1 << 4;
+const DEFAULT_TIME_COST: u32 = 3;
 
 impl Manifest {
     pub fn new() -> Result<Manifest, Error> {
@@ -31,7 +33,7 @@ impl Manifest {
 
         Ok(Manifest {
             salt: Key { data: salt_data },
-            keys: HashSet::new(),
+            keys: BTreeSet::new(),
             variant: argon2::Variant::Argon2i,
             version: argon2::Version::Version13,
             time_cost: DEFAULT_TIME_COST,
@@ -40,7 +42,7 @@ impl Manifest {
         })
     }
 
-    pub fn parse<R>(r: R) -> Result<Manifest, Error> 
+    pub fn deserialize<R>(r: R) -> Result<Manifest, Error> 
         where R: Read
     {
         let mut reader = BufReader::new(r);
@@ -49,11 +51,12 @@ impl Manifest {
 
         let mut manifest = {
             let mut parts: Vec<_> = line.split(' ')
+                .map(|s| s.trim())
                 .collect();
 
             parts.reverse();
 
-            let algo = Algorithm::from_u32(pop(&mut parts)?.parse()?)?;
+            let _ = Algorithm::from_u32(pop(&mut parts)?.parse()?)?;
             let variant = argon2::Variant::from_u32(pop(&mut parts)?.parse()?)?;
             let version = argon2::Version::from_u32(pop(&mut parts)?.parse()?)?;
             let time_cost = pop(&mut parts)?.parse()?;
@@ -71,7 +74,7 @@ impl Manifest {
 
             Manifest {
                 salt: Key { data: salt_data },
-                keys: HashSet::new(),
+                keys: BTreeSet::new(),
                 variant: variant,
                 version: version,
                 time_cost: time_cost,
@@ -86,7 +89,7 @@ impl Manifest {
                 break;
             }
 
-            let hash_data = hex::decode(&line)?;
+            let hash_data = hex::decode(line.trim())?;
 
             if hash_data.len() != KEY_LENGTH {
                 bail!("hash must be {} bytes", KEY_LENGTH);
@@ -100,6 +103,25 @@ impl Manifest {
         }
 
         Ok(manifest)
+    }
+
+    pub fn serialize<W>(&self, mut w: W) -> Result<(), Error> 
+        where W: Write
+    {
+        let algo = Algorithm::Argon2.as_u32();
+        let var = self.variant.as_u32();
+        let ver = self.version.as_u32();
+        let tc = self.time_cost;
+        let mem = self.mem_cost;
+        let lanes = self.lanes;
+        let salt = hex::encode(self.salt.data);
+        write!(w, "{} {} {} {} {} {} {}\n", algo, var, ver, tc, mem, lanes, salt)?;
+        for key in &self.keys {
+            let encoded = hex::encode(key.data);
+            write!(w, "{}\n", encoded)?;
+        }
+
+        Ok(())
     }
 
     pub fn insert(&mut self, e: &Entry) {
@@ -135,7 +157,9 @@ impl Manifest {
     }
 }
 
-fn pop<T>(vec: &mut Vec<T>) -> Result<T, Error> {
+fn pop<T>(vec: &mut Vec<T>) -> Result<T, Error> 
+    where T: std::fmt::Display
+{
     vec.pop().ok_or_else(|| format_err!("not enough values"))
 }
 
@@ -160,9 +184,15 @@ impl Entry {
     }
 }
 
-#[derive(Hash, Eq, PartialEq)]
+#[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Debug)]
 struct Key {
     data: [u8; KEY_LENGTH]
+}
+
+impl From<[u8; KEY_LENGTH]> for Key {
+    fn from(d: [u8; KEY_LENGTH]) -> Self {
+        Key { data: d }
+    }
 }
 
 enum Algorithm {
@@ -181,6 +211,66 @@ impl Algorithm {
             0x1 => Ok(Algorithm::Argon2),
             _ => Err(format_err!("invalid algorithm"))
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+
+    use super::*;
+    use std::collections::BTreeSet;
+
+
+    #[test]
+    fn round_trip() {
+        let key = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+        let mut keys = BTreeSet::new();
+        for i in 0..15 {
+            keys.insert({ let mut arr = key.clone(); arr.rotate_left(i); arr.into() });
+
+        }
+
+        let manifest = Manifest {
+            salt: key.into(),
+            keys: keys,
+            variant: argon2::Variant::Argon2i,
+            version: argon2::Version::Version13,
+            time_cost: DEFAULT_TIME_COST,
+            mem_cost: DEFAULT_MEM_COST,
+            lanes: DEFAULT_PARALLELISM,
+        };
+
+        let mut buffer = Vec::new();
+        manifest.serialize(&mut buffer).unwrap();
+
+        let text = std::str::from_utf8(&buffer).unwrap();
+        println!("{}", text);
+
+
+        let result = Manifest::deserialize(&buffer[..]).unwrap();
+
+        assert_eq!(manifest, result);
+    }
+
+    #[test]
+    fn test_contains() {
+        let salt = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+
+        let mut manifest = Manifest {
+            salt: salt.into(),
+            keys: BTreeSet::new(),
+            variant: argon2::Variant::Argon2i,
+            version: argon2::Version::Version13,
+            time_cost: DEFAULT_TIME_COST,
+            mem_cost: DEFAULT_MEM_COST,
+            lanes: DEFAULT_PARALLELISM,
+        };
+
+        let entry = Entry::new("foo/bar");
+        manifest.insert(&entry);
+
+        assert_eq!(true, manifest.contains(&entry))
     }
 }
 

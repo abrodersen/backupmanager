@@ -139,10 +139,7 @@ mod test {
 
     fn get_relative_paths<'a>(dir: &'a TempDir, files: &'a [(PathBuf, Metadata)]) -> Vec<&'a str> {
         files.iter().map(|x| {
-            x.0.strip_prefix(dir.path())
-                .unwrap()
-                .to_str()
-                .unwrap()
+            x.0.to_str().unwrap()
         })
         .collect::<Vec<_>>()
     }

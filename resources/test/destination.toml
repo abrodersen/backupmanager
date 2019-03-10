@@ -2,4 +2,7 @@
 name = "foo"
 type = "s3"
 region = "us-east-2"
+prefix = "backups"
 bucket = "test"
+access_key_id = "foo"
+secret_access_key = "bar"
