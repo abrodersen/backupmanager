@@ -7,6 +7,7 @@ use super::compression::{self, Compressor};
 use super::manifest::{Entry, Manifest};
 
 use std::fs;
+use std::os::unix::fs::MetadataExt;
 
 use tar;
 
@@ -33,6 +34,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
         }
     };
 
+    let timestamp = Utc::now();
     let hostname = gethostname().into_string()
         .map_err(|_| format_err!("failed to convert hostname to string"))?;
 
@@ -65,13 +67,20 @@ pub fn backup(job: &Job) -> Result<(), Error> {
         },
     };
 
+    let target_kind = match &job.typ {
+        config::JobType::Full => TargetType::Full,
+        config::JobType::Differential => TargetType::Differential,
+    };
+
+    let desc = TargetDescriptor::new(hostname, job.name.as_ref(), timestamp, target_kind);
+
     info!("creating snapshot of source disk");
     let snapshot = source.snapshot()?;
 
     let result = snapshot.size_hint()
         .and_then(|hint| {
             info!("creating write pipeline");
-            create_pipeline(job, destination.as_ref(), &hostname, hint)
+            create_pipeline(job, destination.as_ref(), &desc, hint)
         })
         .and_then(|compressor| {
             info!("copying data from snapshot to target");
@@ -83,12 +92,20 @@ pub fn backup(job: &Job) -> Result<(), Error> {
         error!("failed to tear down snaphsot: {}", e);
     }
 
-    result.and_then(|(target, manifest)| {
+    let manifest = result.and_then(|(target, manifest)| {
         let target = target.finalize()?;
         let target = target.finalize()?;
         info!("upload succeeded, finalizing target");
-        target.finalize()
-    })
+        target.finalize()?;
+        Ok(manifest)
+    })?;
+
+    let mut buffer = Vec::new();
+    manifest.serialize(&mut buffer)?;
+    info!("uploading manifest");
+    destination.upload_manifest(&desc, &buffer[..])?;
+
+    Ok(())
 }
 
 fn build_destination(job: &Job) -> Result<Box<Destination>, Error> {
@@ -115,11 +132,13 @@ fn build_destination(job: &Job) -> Result<Box<Destination>, Error> {
     Ok(destination)
 }
 
-fn create_pipeline(job: &Job, dest: &dyn Destination, hostname: &str, size_hint: u64) -> Result<Box<Compressor>, Error> {
-    let timestamp = Utc::now();
-    
-    let desc = TargetDescriptor::new(hostname, job.name.as_ref(), timestamp, TargetType::Full);
-
+fn create_pipeline(
+    job: &Job, 
+    dest: &dyn Destination, 
+    desc: &TargetDescriptor, 
+    size_hint: u64)
+    -> Result<Box<Compressor>, Error> 
+{
     info!("allocating a target with size hint {} for backup data", size_hint);
     let target = dest.allocate(&desc, size_hint)?;
 
@@ -162,8 +181,13 @@ fn upload_archive(
         let (rel_path, metadata) = entry?;
 
         if let Some(m) = filter {
-            let test = Entry::new(&rel_path);
+            let modified = metadata.modified()?;
+            let uid = metadata.uid();
+            let gid = metadata.gid();
+            let mode = metadata.mode();
+            let test = Entry::new(&rel_path, modified, uid, gid, mode);
             if m.contains(&test) {
+                trace!("skipping file '{}'", rel_path.display());
                 continue;
             }
         }

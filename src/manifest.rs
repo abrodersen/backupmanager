@@ -11,6 +11,8 @@ use rand::Rng;
 
 use argon2::{self, Config};
 
+use chrono::prelude::*;
+
 #[derive(Eq, PartialEq, Debug)]
 pub struct Manifest {
     salt: Key,
@@ -166,23 +168,35 @@ fn pop<T>(vec: &mut Vec<T>) -> Result<T, Error>
 
 pub struct Entry {
     path: PathBuf,
+    modified: DateTime<Utc>,
+    uid: u32,
+    gid: u32,
+    mode: u32,
 }
 
 impl Entry {
-    pub fn new<P>(path: P) -> Entry 
-        where P: AsRef<Path>
+    pub fn new<P, T>(path: P, modified: T, uid: u32, gid: u32, mode: u32) -> Entry 
+        where P: AsRef<Path>, T: Into<DateTime<Utc>>
     {
         Entry {
             path: path.as_ref().into(),
+            modified: modified.into(),
+            uid: uid,
+            gid: gid,
+            mode: mode,
         }
     }
 
-    fn serialize<W>(&self, w: W) -> Result<(), Error>
+    fn serialize<W>(&self, mut w: W) -> Result<(), Error>
         where W: Write
     {
         let path = self.path.to_str()
             .ok_or_else(|| format_err!("path is not valid utf-8"))?;
-        bincode::serialize_into(w, path.as_bytes())?;
+        bincode::serialize_into(&mut w, path.as_bytes())?;
+        bincode::serialize_into(&mut w, &self.modified.timestamp())?;
+        bincode::serialize_into(&mut w, &self.uid)?;
+        bincode::serialize_into(&mut w, &self.gid)?;
+        bincode::serialize_into(&mut w, &self.mode)?;
         Ok(())
     }
 }
