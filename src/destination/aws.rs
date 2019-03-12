@@ -125,8 +125,8 @@ impl AwsBucket {
         };
 
         let typ = match parts[1] {
-            "full" => TargetType::Full,
-            "diff" => TargetType::Differential,
+            "full.manifest" => TargetType::Full,
+            "diff.manifest" => TargetType::Differential,
             _ => return None,
         };
 

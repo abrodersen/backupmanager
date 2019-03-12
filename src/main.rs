@@ -107,13 +107,14 @@ fn main() -> Result<(), Error> {
 
     let job = backup::Job {
         name: job.name,
+        typ: job.typ,
         source: src,
         destination: dest,
         encryption: encr,
         compression: comp,
     };
 
-    backup::full_backup(&job)?;
+    backup::backup(&job)?;
 
     Ok(())
 }

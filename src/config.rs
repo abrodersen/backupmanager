@@ -30,8 +30,18 @@ pub struct Config {
 }
 
 #[derive(Deserialize)]
+#[serde(tag = "type")]
+pub enum JobType {
+    #[serde(rename = "full")]
+    Full,
+    #[serde(rename = "differential")]
+    Differential
+}
+
+#[derive(Deserialize)]
 pub struct Job {
     pub name: String,
+    pub typ: JobType,
     pub source: String,
     pub destination: String,
     pub compression: Option<String>,

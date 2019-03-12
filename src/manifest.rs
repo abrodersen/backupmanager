@@ -2,6 +2,7 @@
 use std::collections::BTreeSet;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::convert::From;
+use std::path::{Path, PathBuf};
 
 use failure::Error;
 
@@ -164,22 +165,24 @@ fn pop<T>(vec: &mut Vec<T>) -> Result<T, Error>
 }
 
 pub struct Entry {
-    path: String,
+    path: PathBuf,
 }
 
 impl Entry {
-    pub fn new<S>(path: S) -> Entry 
-        where S: Into<String> 
+    pub fn new<P>(path: P) -> Entry 
+        where P: AsRef<Path>
     {
         Entry {
-            path: path.into(),
+            path: path.as_ref().into(),
         }
     }
 
     fn serialize<W>(&self, w: W) -> Result<(), Error>
         where W: Write
     {
-        bincode::serialize_into(w, &self.path)?;
+        let path = self.path.to_str()
+            .ok_or_else(|| format_err!("path is not valid utf-8"))?;
+        bincode::serialize_into(w, path.as_bytes())?;
         Ok(())
     }
 }

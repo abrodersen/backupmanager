@@ -8,6 +8,7 @@ use failure::Error;
 
 use chrono::prelude::*;
 
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum TargetType {
     Full,
     Differential,
@@ -31,11 +32,38 @@ impl TargetDescriptor {
             typ: typ,
         }
     }
+
+    pub fn host(&self) -> &str {
+        &self.host
+    }
+
+    pub fn job(&self) -> &str {
+        &self.job
+    }
+
+    pub fn kind(&self) -> TargetType {
+        self.typ.clone()
+    }
+
+    pub fn timestamp(&self) -> &DateTime<Utc> {
+        &self.timestamp
+    }
 }
 
 pub struct BackupSearchRequest {
     host: String,
     job: String,
+}
+
+impl BackupSearchRequest {
+    pub fn new<S, T>(host: S, job: T) -> BackupSearchRequest 
+        where S: Into<String>, T: Into<String>
+    {
+        BackupSearchRequest {
+            host: host.into(),
+            job: job.into(),
+        }
+    }
 }
 
 pub trait Destination {
