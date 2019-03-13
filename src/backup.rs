@@ -225,6 +225,8 @@ fn upload_archive(
         }
     }
 
+    info!("processed {} files", manifest.len());
+
     let target = builder.into_inner()?;
 
     Ok((target, manifest))

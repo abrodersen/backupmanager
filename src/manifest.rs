@@ -45,6 +45,10 @@ impl Manifest {
         })
     }
 
+    pub fn len(&self) -> usize {
+        self.keys.len()
+    }
+
     pub fn deserialize<R>(r: R) -> Result<Manifest, Error> 
         where R: Read
     {

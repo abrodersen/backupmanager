@@ -41,6 +41,7 @@ pub enum JobType {
 #[derive(Deserialize)]
 pub struct Job {
     pub name: String,
+    #[serde(flatten)]
     pub typ: JobType,
     pub source: String,
     pub destination: String,
