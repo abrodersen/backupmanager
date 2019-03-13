@@ -56,6 +56,8 @@ pub fn backup(job: &Job) -> Result<(), Error> {
 
             let backup = backups.pop()
                 .ok_or_else(|| format_err!("no recent full backups found"))?;
+
+            info!("base backup is host = {}, job = {}, time = {} as a base", backup.host(), backup.job(), backup.timestamp());
             
             Some(backup)
         }
@@ -171,7 +173,7 @@ fn upload_archive(
     filter: Option<&Manifest>)
     -> Result<(Box<Compressor>, Manifest), Error>
 {
-    let manifest = Manifest::new()?;
+    let mut manifest = Manifest::new()?;
 
     let mut builder = tar::Builder::new(target);
     builder.follow_symlinks(false);
@@ -183,13 +185,15 @@ fn upload_archive(
     for entry in files {
         let (rel_path, metadata) = entry?;
 
+        let modified = metadata.modified()?;
+        let uid = metadata.uid();
+        let gid = metadata.gid();
+        let mode = metadata.mode();
+        let entry_desc = Entry::new(&rel_path, modified, uid, gid, mode);
+
         if let Some(m) = filter {
-            let modified = metadata.modified()?;
-            let uid = metadata.uid();
-            let gid = metadata.gid();
-            let mode = metadata.mode();
-            let test = Entry::new(&rel_path, modified, uid, gid, mode);
-            if m.contains(&test) {
+            
+            if m.contains(&entry_desc) {
                 trace!("skipping file '{}'", rel_path.display());
                 continue;
             }
@@ -201,12 +205,14 @@ fn upload_archive(
         if file_type.is_dir() {
             trace!("appending dir '{}' to archive", rel_path.display());
             builder.append_dir(&rel_path, &full_path)?;
+            manifest.insert(&entry_desc);
         }
 
         if file_type.is_file() {
             trace!("appending file '{}' to archive", rel_path.display());
             let mut file = fs::File::open(&full_path)?;
             builder.append_file(&rel_path, &mut file)?;
+            manifest.insert(&entry_desc);
         }
 
         if file_type.is_symlink() {
@@ -215,6 +221,7 @@ fn upload_archive(
             header.set_metadata(&metadata);
             let link = fs::read_link(&full_path)?;
             builder.append_link(&mut header, rel_path, link)?;
+            manifest.insert(&entry_desc);
         }
     }
 

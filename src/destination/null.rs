@@ -8,15 +8,15 @@ use failure::Error;
 pub struct NullDestination;
 
 impl super::Destination for NullDestination {
-    fn list_backups(&self, request: &super::BackupSearchRequest) -> Result<Vec<super::TargetDescriptor>, Error> {
+    fn list_backups(&self, _: &super::BackupSearchRequest) -> Result<Vec<super::TargetDescriptor>, Error> {
         unimplemented!();
     }
 
-    fn fetch_manifest(&self, desc: &super::TargetDescriptor) -> Result<Vec<u8>, Error> {
+    fn fetch_manifest(&self, _: &super::TargetDescriptor) -> Result<Vec<u8>, Error> {
         unimplemented!();
     }
 
-    fn upload_manifest(&self, desc: &super::TargetDescriptor, data: &[u8]) -> Result<(), Error> {
+    fn upload_manifest(&self, _: &super::TargetDescriptor, _: &[u8]) -> Result<(), Error> {
         unimplemented!();
     }
 

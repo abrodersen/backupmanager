@@ -1,7 +1,6 @@
 
 use std::fs;
 use std::path::PathBuf;
-use std::cmp;
 
 use super::{Source, Snapshot, Files};
 use mount;
