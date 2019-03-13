@@ -1,6 +1,6 @@
 
 use super::config;
-use super::source::{Source, Snapshot, lvm};
+use super::source::{Source, Snapshot, lvm, cephfs};
 use super::destination::{Destination, BackupSearchRequest, TargetDescriptor, TargetType, aws, fd, null};
 use super::encryption::{self, Cryptor};
 use super::compression::{self, Compressor};
@@ -31,6 +31,9 @@ pub fn backup(job: &Job) -> Result<(), Error> {
     let source = match &job.source.typ {
         config::SourceType::LVM { volume_group, logical_volume } => {
             Box::new(lvm::LogicalVolume::new(volume_group.as_ref(), logical_volume.as_ref())) as Box<Source>
+        },
+        config::SourceType::CephFS { mon, path, name, secret } => {
+            Box::new(cephfs::CephFileSystem::new(mon.as_ref(), path.as_ref(), name.as_ref(), secret.as_ref())) as Box<Source>
         }
     };
 

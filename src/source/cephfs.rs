@@ -20,12 +20,12 @@ pub struct CephFileSystem {
 }
 
 impl CephFileSystem {
-    pub fn new(mon: String, path: String, name: String, secret: String) -> CephFileSystem {
+    pub fn new<S: Into<String>>(mon: S, path: S, name: S, secret: S) -> CephFileSystem {
         CephFileSystem {
-            mon: mon,
-            path: path,
-            name: name,
-            secret: secret,
+            mon: mon.into(),
+            path: path.into(),
+            name: name.into(),
+            secret: secret.into(),
         }
     }
 }
