@@ -1,5 +1,6 @@
 
 pub(crate) mod lvm;
+pub(crate) mod cephfs;
 
 use std::fs::{self, Metadata, ReadDir};
 use std::mem;
