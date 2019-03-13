@@ -9,7 +9,7 @@ use failure::Error;
 use rand::rngs::OsRng;
 use rand::Rng;
 
-use argon2::{self, Config};
+use sha2::Digest;
 
 use chrono::prelude::*;
 
@@ -17,17 +17,9 @@ use chrono::prelude::*;
 pub struct Manifest {
     salt: Key,
     keys: BTreeSet<Key>,
-    lanes: u32,
-    mem_cost: u32,
-    time_cost: u32,
-    variant: argon2::Variant,
-    version: argon2::Version,
 }
 
-const KEY_LENGTH: usize = 16;
-const DEFAULT_PARALLELISM: u32 = 8;
-const DEFAULT_MEM_COST: u32 = 1 << 18;
-const DEFAULT_TIME_COST: u32 = 3;
+const KEY_LENGTH: usize = 32;
 
 impl Manifest {
     pub fn new() -> Result<Manifest, Error> {
@@ -37,11 +29,6 @@ impl Manifest {
         Ok(Manifest {
             salt: Key { data: salt_data },
             keys: BTreeSet::new(),
-            variant: argon2::Variant::Argon2i,
-            version: argon2::Version::Version13,
-            time_cost: DEFAULT_TIME_COST,
-            mem_cost: DEFAULT_MEM_COST,
-            lanes: DEFAULT_PARALLELISM,
         })
     }
 
@@ -64,11 +51,6 @@ impl Manifest {
             parts.reverse();
 
             let _ = Algorithm::from_u32(pop(&mut parts)?.parse()?)?;
-            let variant = argon2::Variant::from_u32(pop(&mut parts)?.parse()?)?;
-            let version = argon2::Version::from_u32(pop(&mut parts)?.parse()?)?;
-            let time_cost = pop(&mut parts)?.parse()?;
-            let mem_cost = pop(&mut parts)?.parse()?;
-            let lanes = pop(&mut parts)?.parse()?;
 
             let salt = hex::decode(pop(&mut parts)?)?;
 
@@ -82,11 +64,6 @@ impl Manifest {
             Manifest {
                 salt: Key { data: salt_data },
                 keys: BTreeSet::new(),
-                variant: variant,
-                version: version,
-                time_cost: time_cost,
-                mem_cost: mem_cost,
-                lanes: lanes,
             }
         };
 
@@ -115,14 +92,9 @@ impl Manifest {
     pub fn serialize<W>(&self, mut w: W) -> Result<(), Error> 
         where W: Write
     {
-        let algo = Algorithm::Argon2.as_u32();
-        let var = self.variant.as_u32();
-        let ver = self.version.as_u32();
-        let tc = self.time_cost;
-        let mem = self.mem_cost;
-        let lanes = self.lanes;
+        let algo = Algorithm::Sha256.as_u32();
         let salt = hex::encode(self.salt.data);
-        write!(w, "{} {} {} {} {} {} {}\n", algo, var, ver, tc, mem, lanes, salt)?;
+        write!(w, "{} {}\n", algo, salt)?;
         for key in &self.keys {
             let encoded = hex::encode(key.data);
             write!(w, "{}\n", encoded)?;
@@ -142,21 +114,12 @@ impl Manifest {
     }
 
     fn gen_key(&self, e: &Entry) -> Key {
-        let config = Config {
-            secret: &[],
-            ad: &[],
-            thread_mode: argon2::ThreadMode::Parallel,
-            hash_length: KEY_LENGTH as u32,
-            lanes: self.lanes,
-            mem_cost: self.mem_cost,
-            time_cost: self.time_cost,
-            variant: self.variant,
-            version: self.version,
-        };
-
+        let mut hasher = sha2::Sha256::new();
         let mut buffer = Vec::new();
         e.serialize(&mut buffer).expect("failed to write buffer data");
-        let hash = argon2::hash_raw(&buffer, &self.salt.data, &config).expect("failed to hash data");
+        hasher.input(&buffer);
+        hasher.input(&self.salt.data);
+        let hash = hasher.result();
         let mut key_data = [0; KEY_LENGTH];
         key_data.copy_from_slice(&hash[..]);
 
@@ -217,19 +180,19 @@ impl From<[u8; KEY_LENGTH]> for Key {
 }
 
 enum Algorithm {
-    Argon2
+    Sha256
 }
 
 impl Algorithm {
     fn as_u32(&self) -> u32 {
         match self {
-            Algorithm::Argon2 => 0x1,
+            Algorithm::Sha256 => 0x1,
         }
     }
 
     fn from_u32(val: u32) -> Result<Algorithm, Error> {
         match val {
-            0x1 => Ok(Algorithm::Argon2),
+            0x1 => Ok(Algorithm::Sha256),
             _ => Err(format_err!("invalid algorithm"))
         }
     }
@@ -244,10 +207,11 @@ mod test {
 
     #[test]
     fn round_trip() {
-        let key = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        let key = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31];
 
         let mut keys = BTreeSet::new();
-        for i in 0..15 {
+        for i in 0..31 {
             keys.insert({ let mut arr = key.clone(); arr.rotate_left(i); arr.into() });
 
         }
@@ -255,11 +219,6 @@ mod test {
         let manifest = Manifest {
             salt: key.into(),
             keys: keys,
-            variant: argon2::Variant::Argon2i,
-            version: argon2::Version::Version13,
-            time_cost: DEFAULT_TIME_COST,
-            mem_cost: DEFAULT_MEM_COST,
-            lanes: DEFAULT_PARALLELISM,
         };
 
         let mut buffer = Vec::new();
@@ -276,19 +235,17 @@ mod test {
 
     #[test]
     fn test_contains() {
-        let salt = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15];
+        let salt = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15,
+            16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31];
 
         let mut manifest = Manifest {
             salt: salt.into(),
             keys: BTreeSet::new(),
-            variant: argon2::Variant::Argon2i,
-            version: argon2::Version::Version13,
-            time_cost: DEFAULT_TIME_COST,
-            mem_cost: DEFAULT_MEM_COST,
-            lanes: DEFAULT_PARALLELISM,
         };
 
-        let entry = Entry::new("foo/bar");
+        use chrono::TimeZone;
+        let dt = Utc.timestamp(0, 0);
+        let entry = Entry::new("foo/bar", dt, 0, 0, 0);
         manifest.insert(&entry);
 
         assert_eq!(true, manifest.contains(&entry))

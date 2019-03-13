@@ -27,7 +27,7 @@ extern crate structopt;
 extern crate exponential_backoff;
 extern crate hex;
 extern crate rand;
-extern crate argon2;
+extern crate sha2;
 extern crate bincode;
 
 mod mount;
