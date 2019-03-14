@@ -29,6 +29,7 @@ extern crate hex;
 extern crate rand;
 extern crate sha2;
 extern crate bincode;
+extern crate cron;
 
 mod mount;
 mod config;

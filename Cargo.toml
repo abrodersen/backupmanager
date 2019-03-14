@@ -30,6 +30,7 @@ hex = "0.3.2"
 rand = "0.6.5"
 sha2 = "0.8.0"
 bincode = "1.1.2"
+cron = "0.6"
 
 [dependencies.tar]
 git = "https://github.com/abrodersen/tar-rs.git"

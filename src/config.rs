@@ -35,7 +35,7 @@ pub enum JobType {
     #[serde(rename = "full")]
     Full,
     #[serde(rename = "differential")]
-    Differential
+    Differential { full_backup_schedule: String }
 }
 
 #[derive(Deserialize)]

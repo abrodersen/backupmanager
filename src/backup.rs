@@ -8,12 +8,15 @@ use super::manifest::{Entry, Manifest};
 
 use std::fs;
 use std::os::unix::fs::MetadataExt;
+use std::str::FromStr;
 
 use tar;
 
-use failure::{Error};
+use failure::Error;
 
 use chrono::prelude::*;
+
+use cron::Schedule;
 
 use gethostname::gethostname;
 
@@ -45,7 +48,10 @@ pub fn backup(job: &Job) -> Result<(), Error> {
 
     let last_full_backup = match job.typ {
         config::JobType::Full => None,
-        config::JobType::Differential => {
+        config::JobType::Differential { ref full_backup_schedule } => {
+            let schedule = Schedule::from_str(&full_backup_schedule)
+                .map_err(|e| format_err!("failed to parse schedule: {}", e))?;
+
             let request = BackupSearchRequest::new(job.name.as_ref(), hostname.as_ref());
             let mut backups = destination.list_backups(&request)?
                 .into_iter()
@@ -54,27 +60,44 @@ pub fn backup(job: &Job) -> Result<(), Error> {
             
             backups.sort_by(|a, b| a.timestamp().cmp(b.timestamp()).reverse());
 
-            let backup = backups.pop()
-                .ok_or_else(|| format_err!("no recent full backups found"))?;
+            match backups.pop() {
+                None => {
+                    info!("no full backups found");
+                    None
+                },
+                Some(backup) => {
+                    let next_occurence = schedule.after(backup.timestamp()).nth(0).unwrap();
 
-            info!("base backup is host = {}, job = {}, time = {} as a base", backup.host(), backup.job(), backup.timestamp());
-            
-            Some(backup)
+                    if next_occurence < timestamp {
+                        info!("base backup is host = {}, job = {}, time = {} as a base", backup.host(), backup.job(), backup.timestamp());
+                        Some(backup)
+                    } else {
+                        info!("last backup was scheduled for {}", next_occurence);
+                        None
+                    }
+                },
+            }
         }
     };
 
     let full_manifest = match last_full_backup {
         None => None,
-        Some(f) => {
+        Some(ref f) => {
             let data = destination.fetch_manifest(&f)?;
             let parsed = Manifest::deserialize(&data[..])?;
             Some(parsed)
         },
     };
 
-    let target_kind = match &job.typ {
-        config::JobType::Full => TargetType::Full,
-        config::JobType::Differential => TargetType::Differential,
+    let target_kind = match (&job.typ, &last_full_backup) {
+        (config::JobType::Full { .. }, _) => TargetType::Full,
+        (config::JobType::Differential { .. }, None) => TargetType::Full,
+        (config::JobType::Differential { .. }, Some(_)) => TargetType::Differential,
+    };
+
+    match target_kind {
+        TargetType::Full => info!("creating a full backup"),
+        TargetType::Differential => info!("creating a differential backup"),
     };
 
     let desc = TargetDescriptor::new(hostname, job.name.as_ref(), timestamp, target_kind);
