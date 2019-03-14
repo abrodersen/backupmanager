@@ -107,8 +107,9 @@ pub fn backup(job: &Job) -> Result<(), Error> {
 
     let mut buffer = Vec::new();
     manifest.serialize(&mut buffer)?;
-    info!("uploading manifest");
+    info!("uploading manifest, size = {}", buffer.len());
     destination.upload_manifest(&desc, &buffer[..])?;
+    info!("manifest uploaded successfully");
 
     Ok(())
 }

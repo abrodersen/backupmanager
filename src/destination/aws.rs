@@ -93,7 +93,7 @@ impl AwsBucket {
     }
     
     fn get_object_dir(&self, host: &str, job: &str) -> String {
-        format!("{}/{}/{}/", self.prefix, host, job)
+        format!("{}{}/{}/", self.prefix, host, job)
     }
 
     fn get_object_name(&self, desc: &TargetDescriptor) -> String {
@@ -102,7 +102,8 @@ impl AwsBucket {
             TargetType::Full => "full",
             TargetType::Differential => "diff",
         };
-        format!("{}{}.{}", prefix, desc.timestamp.to_rfc3339(), ext)
+        let time = desc.timestamp.to_rfc3339_opts( SecondsFormat::Secs, true);
+        format!("{}{}.{}", prefix, time, ext)
     }
 
     fn parse_object(&self, host: &str, job: &str, obj: &s3::Object) -> Option<TargetDescriptor> {
@@ -200,6 +201,7 @@ impl Destination for AwsBucket {
         upload_req.bucket = self.bucket.clone();
         upload_req.key = name;
         upload_req.content_length = Some(body.len() as i64);
+        upload_req.body = Some(s3::StreamingBody::new(stream::once(Ok(data.to_vec()))));
 
         let _ = client.put_object(upload_req).sync()?;
 
