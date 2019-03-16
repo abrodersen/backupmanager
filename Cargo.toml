@@ -4,7 +4,7 @@ version = "0.1.0"
 authors = ["Aaron Brodersen <aaron@abrodersen.com>"]
 
 [dependencies]
-lvm2 =  { path = "../lvm2-rs" }
+lvm2 =  { git = "https://github.com/abrodersen/lvm2-rs", branch = "master" }
 log = "0.4"
 env_logger = "0.5"
 serde = "1.0"

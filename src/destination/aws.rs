@@ -154,8 +154,6 @@ fn get_next_pow2(s: u64) -> u64 {
     1 << log
 }
 
-
-
 impl Destination for AwsBucket {
 
     fn list_backups(&self, search: &BackupSearchRequest) -> Result<Vec<TargetDescriptor>, Error> {
