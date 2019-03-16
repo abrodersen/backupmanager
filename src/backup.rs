@@ -52,7 +52,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
             let schedule = Schedule::from_str(&full_backup_schedule)
                 .map_err(|e| format_err!("failed to parse schedule: {}", e))?;
 
-            let request = BackupSearchRequest::new(job.name.as_ref(), hostname.as_ref());
+            let request = BackupSearchRequest::new(hostname.as_ref(), job.name.as_ref());
             let mut backups = destination.list_backups(&request)?
                 .into_iter()
                 .filter(|x| x.kind() == TargetType::Full)
@@ -68,11 +68,11 @@ pub fn backup(job: &Job) -> Result<(), Error> {
                 Some(backup) => {
                     let next_occurence = schedule.after(backup.timestamp()).nth(0).unwrap();
 
-                    if next_occurence < timestamp {
-                        info!("base backup is host = {}, job = {}, time = {} as a base", backup.host(), backup.job(), backup.timestamp());
+                    if next_occurence > timestamp {
+                        info!("base backup is host = {}, job = {}, time = {}", backup.host(), backup.job(), backup.timestamp());
                         Some(backup)
                     } else {
-                        info!("last backup was scheduled for {}", next_occurence);
+                        info!("last full backup was scheduled for {}", next_occurence);
                         None
                     }
                 },

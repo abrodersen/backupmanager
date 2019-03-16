@@ -112,23 +112,32 @@ impl AwsBucket {
             _ => return None,
         };
 
+        trace!("evaluating object '{}'", key);
+
         let prefix = self.get_object_dir(host, job);
         let name = key.trim_start_matches(&prefix);
         let parts: Vec<&str> = name.splitn(2, ".").collect();
 
         if parts.len() < 2 {
+            trace!("expected 2 parts, found {}", parts.len());
             return None;
         }
 
         let timestamp = match DateTime::parse_from_rfc3339(parts[0]) {
             Ok(t) => DateTime::from_utc(t.naive_utc(), Utc),
-            Err(_) => return None,
+            Err(_) => {
+                trace!("datetime '{}' could not be parsed", parts[0]);
+                return None;
+            },
         };
 
         let typ = match parts[1] {
             "full.manifest" => TargetType::Full,
             "diff.manifest" => TargetType::Differential,
-            _ => return None,
+            part => {
+                trace!("backup type '{}' could not be parsed", part);
+                return None;
+            },
         };
 
         Some(TargetDescriptor {
@@ -154,16 +163,27 @@ impl Destination for AwsBucket {
 
         let mut backups = Vec::new();
         let mut token = None;
+        let dir = self.get_object_dir(&search.host, &search.job);
 
+        debug!("enumerating aws objects in '{}'", &dir);
         loop {
+
             let mut request = s3::ListObjectsV2Request::default();
             request.bucket = self.bucket.clone();
             request.continuation_token = token.clone();
-            request.prefix = Some(self.get_object_dir(&search.host, &search.job));
+            request.prefix = Some(dir.clone());
+
+            trace!("aws list objects v2 request: {:?}", request);
 
             let result = client.list_objects_v2(request).sync()?;
+
+            trace!("aws list objects v2 response: {:?}", result);
+
             if let Some(objs) = result.contents {
+                trace!("found {} objects", objs.len());
                 backups.extend(objs.iter().filter_map(|obj| self.parse_object(&search.host, &search.job, obj)));
+            } else {
+                trace!("response contained no objects");
             }
 
             if !result.is_truncated.unwrap_or(false) {
@@ -172,6 +192,8 @@ impl Destination for AwsBucket {
 
             token = result.next_continuation_token;
         }
+
+        debug!("found {} valid backup manifests", backups.len());
 
         Ok(backups)
     }
