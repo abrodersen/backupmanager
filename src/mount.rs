@@ -46,8 +46,8 @@ pub fn mount_ceph<P: AsRef<Path>>(mon: &str, path: &str, name: &str, secret: &st
     let mut flags = MountFlags::empty();
     flags.insert(MountFlags::NOEXEC);
     flags.insert(MountFlags::NOSUID);
-    flags.insert(MountFlags::RDONLY);
-    let data = format!("name={},secret={},noatime,", name, secret);
+    //flags.insert(MountFlags::RDONLY);
+    let data = format!("name={},secret={}", name, secret);
     trace!("creating new ceph mount, flags: {:?}", flags);
 
     trace!("begin mount loop");

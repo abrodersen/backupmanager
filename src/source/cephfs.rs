@@ -43,7 +43,7 @@ impl Source for CephFileSystem {
 
         let id = Uuid::new_v4();
         let mut snap = dest;
-        snap.push(".ceph");
+        snap.push(".snap");
         snap.push(format!("{}", id));
         trace!("creating snapshot at '{}'", snap.display());
         fs::create_dir_all(&snap)?;
@@ -71,7 +71,10 @@ impl Snapshot for CephFileSystemSnapshot {
     }
 
     fn destroy(self: Box<Self>) -> Result<(), Error> {
-        fs::remove_dir_all(&self.snap)?;
+        debug!("unlinking snapshot {}", self.snap.display());
+        fs::remove_dir(&self.snap)?;
+
+        debug!("unmounting temp dir {}", self.dir.path().display());
         mount::unmount(self.dir.path())?;
 
         Ok(())
