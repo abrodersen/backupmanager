@@ -84,6 +84,8 @@ impl Future for CredentialFuture {
 const NUM_THREADS: u8 = 4;
 const MAX_RETRIES: u32 = 32;
 
+
+
 impl AwsBucket {
     fn get_client(&self) -> Result<s3::S3Client, Error> {
         let client = aws::request::HttpClient::new()?;
@@ -154,6 +156,25 @@ fn get_next_pow2(s: u64) -> u64 {
     1 << log
 }
 
+enum ObjectType {
+    Manifest,
+    Data,
+}
+
+fn get_object_tags(desc: &TargetDescriptor, kind: ObjectType) -> String {
+    let backup_type = match desc.kind() {
+        TargetType::Full => "full",
+        TargetType::Differential => "diff",
+    };
+
+    let object_type = match kind {
+        ObjectType::Manifest => "manifest",
+        ObjectType::Data => "data",
+    };
+
+    format!("backup={}&type={}", backup_type, object_type)
+}
+
 impl Destination for AwsBucket {
 
     fn list_backups(&self, search: &BackupSearchRequest) -> Result<Vec<TargetDescriptor>, Error> {
@@ -220,6 +241,7 @@ impl Destination for AwsBucket {
         let mut upload_req = s3::PutObjectRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = name;
+        upload_req.tagging = Some(get_object_tags(desc, ObjectType::Manifest));
         upload_req.content_length = Some(body.len() as i64);
         upload_req.body = Some(s3::StreamingBody::new(stream::once(Ok(data.to_vec()))));
 
@@ -235,6 +257,7 @@ impl Destination for AwsBucket {
         let mut upload_req = s3::CreateMultipartUploadRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = name.clone();
+        upload_req.tagging = Some(get_object_tags(desc, ObjectType::Data));
 
         let response = client.create_multipart_upload(upload_req).sync()?;
         let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
