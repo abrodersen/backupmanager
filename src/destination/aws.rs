@@ -241,6 +241,7 @@ impl Destination for AwsBucket {
         let mut upload_req = s3::PutObjectRequest::default();
         upload_req.bucket = self.bucket.clone();
         upload_req.key = name;
+        upload_req.storage_class = Some("STANDARD".into());
         upload_req.tagging = Some(get_object_tags(desc, ObjectType::Manifest));
         upload_req.content_length = Some(body.len() as i64);
         upload_req.body = Some(s3::StreamingBody::new(stream::once(Ok(data.to_vec()))));
@@ -258,6 +259,7 @@ impl Destination for AwsBucket {
         upload_req.bucket = self.bucket.clone();
         upload_req.key = name.clone();
         upload_req.tagging = Some(get_object_tags(desc, ObjectType::Data));
+        upload_req.storage_class = Some("DEEP_ARCHIVE".into());
 
         let response = client.create_multipart_upload(upload_req).sync()?;
         let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
