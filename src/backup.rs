@@ -58,7 +58,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
                 .filter(|x| x.kind() == TargetType::Full)
                 .collect::<Vec<_>>();
             
-            backups.sort_by(|a, b| a.timestamp().cmp(b.timestamp()).reverse());
+            backups.sort_by(|a, b| a.timestamp().cmp(b.timestamp()));
 
             match backups.pop() {
                 None => {
