@@ -9,7 +9,7 @@ use openpgp::serialize::writer;
 
 use destination::Target;
 
-use failure::{Error};
+use failure::{Error, ResultExt};
 
 pub struct PgpCryptor {
     target: sync::Arc<sync::Mutex<Box<Target>>>,
@@ -20,15 +20,18 @@ impl PgpCryptor {
     pub fn new(w: Box<Target>, key_file: &str) -> Result<PgpCryptor, Error> {
         let target = sync::Arc::new(sync::Mutex::new(w));
 
-        let tpk = openpgp::TPK::from_file(key_file)?;
+        let tpk = openpgp::TPK::from_file(key_file)
+            .context("failed to read backup encryption key")?;
 
         let message = stream::Message::new(Wrapper(target.clone()));
         let encryptor = stream::Encryptor::new(message,
             &[],
             &[&tpk],
             stream::EncryptionMode::AtRest,
-            None)?;
-        let writer = stream::LiteralWriter::new(encryptor, constants::DataFormat::Binary, None, None)?;
+            None)
+            .context("failed to initialize cryptor")?;
+        let writer = stream::LiteralWriter::new(encryptor, constants::DataFormat::Binary, None, None)
+            .context("failed to initialize writer")?;
 
         Ok(PgpCryptor {
             target: target,

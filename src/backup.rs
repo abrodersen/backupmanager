@@ -12,7 +12,7 @@ use std::str::FromStr;
 
 use tar;
 
-use failure::Error;
+use failure::{Error, ResultExt};
 
 use chrono::prelude::*;
 
@@ -235,8 +235,10 @@ fn upload_archive(
 
         if file_type.is_file() {
             trace!("appending file '{}' to archive", rel_path.display());
-            let mut file = fs::File::open(&full_path)?;
-            builder.append_file(&rel_path, &mut file)?;
+            let mut file = fs::File::open(&full_path)
+                .context(format!("failed to open file '{}'", rel_path.display()))?;
+            builder.append_file(&rel_path, &mut file)
+                .context(format!("failed to append file '{}'", rel_path.display()))?;
             manifest.insert(&entry_desc);
         }
 

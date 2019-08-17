@@ -36,3 +36,6 @@ tar = "^0.4.26"
 
 [dev-dependencies]
 
+[profile.release]
+debug = true
+
