@@ -22,6 +22,8 @@ use futures::{Async, Future, Poll, stream};
 
 use exponential_backoff::Backoff;
 
+use bytes::Bytes;
+
 pub struct AwsBucket {
     region: String,
     bucket: String,
@@ -76,7 +78,7 @@ impl Future for CredentialFuture {
     type Error = auth::CredentialsError;
 
     fn poll(&mut self) -> Poll<Self::Item, Self::Error> {
-        let creds = auth::AwsCredentials::new(self.id.as_ref(), self.secret.as_ref(), None, None);
+        let creds = auth::AwsCredentials::new(self.id.as_str(), self.secret.as_str(), None, None);
         Ok(Async::Ready(creds))
     }
 }
@@ -126,7 +128,7 @@ impl AwsBucket {
         }
 
         let timestamp = match DateTime::parse_from_rfc3339(parts[0]) {
-            Ok(t) => DateTime::from_utc(t.naive_utc(), Utc),
+            Ok(t) => DateTime::<Utc>::from_utc(t.naive_utc(), Utc),
             Err(_) => {
                 trace!("datetime '{}' could not be parsed", parts[0]);
                 return None;
@@ -244,7 +246,8 @@ impl Destination for AwsBucket {
         upload_req.storage_class = Some("STANDARD".into());
         upload_req.tagging = Some(get_object_tags(desc, ObjectType::Manifest));
         upload_req.content_length = Some(body.len() as i64);
-        upload_req.body = Some(s3::StreamingBody::new(stream::once(Ok(data.to_vec()))));
+        let bytes = Bytes::from(data);
+        upload_req.body = Some(s3::StreamingBody::new(stream::once(Ok(bytes))));
 
         let _ = client.put_object(upload_req).sync()?;
 
@@ -499,14 +502,15 @@ impl Chunk {
 }
 
 impl stream::Stream for Chunk {
-    type Item = Vec<u8>;
+    type Item = Bytes;
     type Error = io::Error;
 
     fn poll(&mut self) -> Result<futures::Async<Option<Self::Item>>, Self::Error> {
         if !self.read {
             let data = mem::replace(&mut self.buffer, Vec::with_capacity(0));
             self.read = true;
-            Ok(futures::Async::Ready(Some(data)))
+            let bytes = Bytes::from(data);
+            Ok(futures::Async::Ready(Some(bytes)))
         } else {
             Ok(futures::Async::Ready(None))
         }

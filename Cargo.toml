@@ -6,35 +6,40 @@ authors = ["Aaron Brodersen <aaron@abrodersen.com>"]
 [dependencies]
 lvm2 =  { git = "https://github.com/abrodersen/lvm2-rs", branch = "master" }
 log = "0.4"
-env_logger = "0.5"
+env_logger = "0.6.2"
 serde = "1.0"
 serde_derive = "1.0"
-toml = "0.4"
+toml = "0.5"
 failure = "0.1"
 sys-mount = "1.0"
 uuid = { version = "0.7", features = ["serde", "v4"] }
 tempfile = "3.0"
-rusoto_core = "0.36"
-rusoto_credential = "0.15"
-rusoto_s3 = "0.36"
+rusoto_core = "0.40"
+rusoto_credential = "0.40"
+rusoto_s3 = "0.40"
 futures = "0.1"
 crossbeam = "0.7"
 flate2 = "1.0"
-sequoia-openpgp = "0.3"
+sequoia-openpgp = "0.9"
 chrono = "0.4"
-nix = "0.13"
+nix = "0.15"
 gethostname = "0.2"
 structopt = "0.2"
 exponential-backoff = "0.2.2"
 hex = "0.3.2"
-rand = "0.6.5"
+rand = "0.7.0"
 sha2 = "0.8.0"
 bincode = "1.1.2"
 cron = "0.6"
+bytes = "0.4"
 
 [dependencies.tar]
 git = "https://github.com/abrodersen/tar-rs.git"
 branch = "long-link-names"
+
+# [dependencies.nettle-sys]
+# version = "2.0"
+# features = ["vendored"]
 
 [dev-dependencies]
 

@@ -36,7 +36,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
             Box::new(lvm::LogicalVolume::new(volume_group.as_ref(), logical_volume.as_ref())) as Box<Source>
         },
         config::SourceType::CephFS { mon, path, user, secret } => {
-            Box::new(cephfs::CephFileSystem::new(mon.as_ref(), path.as_ref(), user.as_ref(), secret.as_ref())) as Box<Source>
+            Box::new(cephfs::CephFileSystem::new(mon.as_str(), path.as_str(), user.as_str(), secret.as_str())) as Box<Source>
         }
     };
 
@@ -52,7 +52,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
             let schedule = Schedule::from_str(&full_backup_schedule)
                 .map_err(|e| format_err!("failed to parse schedule: {}", e))?;
 
-            let request = BackupSearchRequest::new(hostname.as_ref(), job.name.as_ref());
+            let request = BackupSearchRequest::new(hostname.as_str(), job.name.as_str());
             let mut backups = destination.list_backups(&request)?
                 .into_iter()
                 .filter(|x| x.kind() == TargetType::Full)
@@ -100,7 +100,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
         TargetType::Differential => info!("creating a differential backup"),
     };
 
-    let desc = TargetDescriptor::new(hostname, job.name.as_ref(), timestamp, target_kind);
+    let desc = TargetDescriptor::new(hostname, job.name.as_str(), timestamp, target_kind);
 
     info!("creating snapshot of source disk");
     let snapshot = source.snapshot()?;

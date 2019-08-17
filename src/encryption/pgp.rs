@@ -26,7 +26,8 @@ impl PgpCryptor {
         let encryptor = stream::Encryptor::new(message,
             &[],
             &[&tpk],
-            stream::EncryptionMode::AtRest)?;
+            stream::EncryptionMode::AtRest,
+            None)?;
         let writer = stream::LiteralWriter::new(encryptor, constants::DataFormat::Binary, None, None)?;
 
         Ok(PgpCryptor {

@@ -30,6 +30,7 @@ extern crate rand;
 extern crate sha2;
 extern crate bincode;
 extern crate cron;
+extern crate bytes;
 
 mod mount;
 mod config;
