@@ -32,14 +32,7 @@ sha2 = "0.8.0"
 bincode = "1.1.2"
 cron = "0.6"
 bytes = "0.4"
-
-[dependencies.tar]
-git = "https://github.com/abrodersen/tar-rs.git"
-branch = "long-link-names"
-
-# [dependencies.nettle-sys]
-# version = "2.0"
-# features = ["vendored"]
+tar = "^0.4.26"
 
 [dev-dependencies]
 

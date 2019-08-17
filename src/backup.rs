@@ -201,6 +201,7 @@ fn upload_archive(
 
     let mut builder = tar::Builder::new(target);
     builder.follow_symlinks(false);
+    builder.mode(tar::HeaderMode::Complete);
 
     let files = snapshot.files()?;
     let base_path = files.base_path();
@@ -241,10 +242,7 @@ fn upload_archive(
 
         if file_type.is_symlink() {
             trace!("appending symlink '{}' to archive", rel_path.display());
-            let mut header = tar::Header::new_gnu();
-            header.set_metadata(&metadata);
-            let link = fs::read_link(&full_path)?;
-            builder.append_link(&mut header, rel_path, link)?;
+            builder.append_path_with_name(&full_path, &rel_path)?;
             manifest.insert(&entry_desc);
         }
     }
