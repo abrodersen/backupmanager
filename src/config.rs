@@ -80,7 +80,7 @@ pub enum SourceType {
     #[serde(rename = "lvm")]
     LVM { volume_group: String, logical_volume: String },
     #[serde(rename = "cephfs")]
-    CephFS { mon: String, path: String, user: String, secret: String },
+    CephFS { mon: Option<String>, path: String, user: Option<String>, secret: Option<String> },
 }
 
 #[derive(Deserialize)]

@@ -12,34 +12,28 @@ use uuid::Uuid;
 use tempfile::{self, TempDir};
 
 pub struct CephFileSystem {
-    mon: String,
     path: String,
-    name: String,
-    secret: String,
 }
 
 impl CephFileSystem {
-    pub fn new<S: Into<String>>(mon: S, path: S, name: S, secret: S) -> CephFileSystem {
+    pub fn new<S: Into<String>>(path: S,) -> CephFileSystem {
         CephFileSystem {
-            mon: mon.into(),
             path: path.into(),
-            name: name.into(),
-            secret: secret.into(),
         }
     }
 }
 
 impl Source for CephFileSystem {
     fn snapshot(&self) -> Result<Box<Snapshot>, Error> {
-        trace!("snapshot of cephfs '{}:{}' started", self.mon, self.path);
+        trace!("snapshot of cephfs '{}' started", self.path);
 
-        let dir = tempfile::tempdir()?;
-        debug!("created tempdir '{}'", dir.path().display());
+        // let dir = tempfile::tempdir()?;
+        // debug!("created tempdir '{}'", dir.path().display());
 
-        let dest = dir.path().to_path_buf();
+        let dest: PathBuf = self.path.clone().into();
 
-        trace!("mounting cephfs to tempdir '{}'", dest.display());
-        mount::mount_ceph(&self.mon, &self.path, &self.name, &self.secret, &dest)?;
+        // trace!("mounting cephfs to tempdir '{}'", dest.display());
+        // mount::mount_ceph(&self.mon, &self.path, &self.name, &self.secret, &dest)?;
 
         let id = Uuid::new_v4();
         let mut snap = dest;
@@ -50,14 +44,12 @@ impl Source for CephFileSystem {
         trace!("snapshot created");
 
         Ok(Box::new(CephFileSystemSnapshot {
-            dir: dir,
             snap: snap,
         }))
     }
 }
 
 pub struct CephFileSystemSnapshot {
-    dir: TempDir,
     snap: PathBuf,
 }
 
@@ -74,8 +66,8 @@ impl Snapshot for CephFileSystemSnapshot {
         debug!("unlinking snapshot {}", self.snap.display());
         fs::remove_dir(&self.snap)?;
 
-        debug!("unmounting temp dir {}", self.dir.path().display());
-        mount::unmount(self.dir.path())?;
+        // debug!("unmounting temp dir {}", self.dir.path().display());
+        // mount::unmount(self.dir.path())?;
 
         Ok(())
     }

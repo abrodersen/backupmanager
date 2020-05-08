@@ -36,7 +36,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
             Box::new(lvm::LogicalVolume::new(volume_group.as_ref(), logical_volume.as_ref())) as Box<Source>
         },
         config::SourceType::CephFS { mon, path, user, secret } => {
-            Box::new(cephfs::CephFileSystem::new(mon.as_str(), path.as_str(), user.as_str(), secret.as_str())) as Box<Source>
+            Box::new(cephfs::CephFileSystem::new(path.as_str())) as Box<Source>
         }
     };
 
