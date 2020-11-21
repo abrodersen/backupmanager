@@ -2,6 +2,7 @@
 name = "backupmanager"
 version = "0.1.0"
 authors = ["Aaron Brodersen <aaron@abrodersen.com>"]
+edition = "2018"
 
 [dependencies]
 lvm2 =  { git = "https://github.com/abrodersen/lvm2-rs", branch = "master" }

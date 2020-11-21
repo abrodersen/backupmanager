@@ -3,7 +3,7 @@ pub(crate) mod pgp;
 
 use std::io;
 
-use destination::Target;
+use crate::destination::Target;
 
 use failure::Error;
 

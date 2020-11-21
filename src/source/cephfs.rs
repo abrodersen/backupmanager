@@ -3,7 +3,6 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::{Source, Snapshot, Files};
-use mount;
 
 use failure::{Error};
 

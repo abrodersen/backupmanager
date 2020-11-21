@@ -1,7 +1,7 @@
 
 use std::io;
 
-use encryption::Cryptor;
+use crate::encryption::Cryptor;
 
 use failure::Error;
 

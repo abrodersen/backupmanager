@@ -7,7 +7,7 @@ use openpgp::constants;
 use openpgp::serialize::stream;
 use openpgp::serialize::writer;
 
-use destination::Target;
+use crate::destination::Target;
 
 use failure::{Error, ResultExt};
 

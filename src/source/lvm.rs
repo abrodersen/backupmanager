@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::cmp;
 
 use super::{Source, Snapshot, Files};
-use mount;
+use crate::mount;
 
 use lvm2::{Context, Mode};
 
