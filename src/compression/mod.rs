@@ -3,10 +3,10 @@ pub(crate) mod gzip;
 
 use std::io;
 
-use failure::Error;
+use anyhow::Error;
 
 use crate::encryption::Cryptor;
 
 pub trait Compressor: io::Write {
-    fn finalize(self: Box<Self>) -> Result<Box<Cryptor>, Error>;
+    fn finalize(self: Box<Self>) -> Result<Box<dyn Cryptor>, Error>;
 }

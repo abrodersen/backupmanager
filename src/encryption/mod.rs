@@ -5,8 +5,8 @@ use std::io;
 
 use crate::destination::Target;
 
-use failure::Error;
+use anyhow::Error;
 
 pub trait Cryptor: io::Write {
-    fn finalize(self: Box<Self>) -> Result<Box<Target>, Error>;
+    fn finalize(self: Box<Self>) -> Result<Box<dyn Target>, Error>;
 }

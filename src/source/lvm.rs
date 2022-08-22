@@ -7,7 +7,7 @@ use crate::mount;
 
 use lvm2::{Context, Mode};
 
-use failure::{Error};
+use anyhow::{Error};
 
 use uuid::Uuid;
 

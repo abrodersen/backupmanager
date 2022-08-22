@@ -4,7 +4,7 @@ use std::path::PathBuf;
 
 use super::{Source, Snapshot, Files};
 
-use failure::{Error};
+use anyhow::{Error};
 
 use uuid::Uuid;
 

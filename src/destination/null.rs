@@ -3,7 +3,7 @@ use std::fs;
 use std::io;
 use std::sync::atomic;
 
-use failure::Error;
+use anyhow::Error;
 
 pub struct NullDestination;
 

@@ -4,10 +4,10 @@ use std::io::{BufRead, BufReader, Read, Write};
 use std::convert::From;
 use std::path::{Path, PathBuf};
 
-use failure::Error;
+use anyhow::Error;
 
-use rand::rngs::OsRng;
 use rand::Rng;
+use rand::rngs::OsRng;
 
 use sha2::Digest;
 
@@ -23,8 +23,7 @@ const KEY_LENGTH: usize = 32;
 
 impl Manifest {
     pub fn new() -> Result<Manifest, Error> {
-        let mut rng = OsRng::new()?;
-        let salt_data: [u8; KEY_LENGTH] = rng.gen();
+        let salt_data: [u8; KEY_LENGTH] = OsRng.gen();
 
         Ok(Manifest {
             salt: Key { data: salt_data },

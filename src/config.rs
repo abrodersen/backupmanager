@@ -3,7 +3,7 @@ use std::fs::OpenOptions;
 use std::io::Read;
 use std::path::Path;
 
-use failure::Error;
+use anyhow::Error;
 
 use toml;
 

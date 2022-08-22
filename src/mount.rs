@@ -4,7 +4,7 @@ use std::io;
 use std::thread;
 use std::time;
 
-use failure::Error;
+use anyhow::Error;
 
 use sys_mount::{self, Mount, MountFlags, SupportedFilesystems, FilesystemType, UnmountFlags};
 

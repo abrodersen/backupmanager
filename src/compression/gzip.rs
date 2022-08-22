@@ -3,7 +3,7 @@ use std::io;
 
 use crate::encryption::Cryptor;
 
-use failure::Error;
+use anyhow::Error;
 
 use flate2::Compression;
 use flate2::write::GzEncoder;

@@ -7,7 +7,7 @@ use std::mem;
 
 use std::path::{Path, PathBuf};
 
-use failure::Error;
+use anyhow::Error;
 
 pub trait Source {
     fn snapshot(&self) -> Result<Box<Snapshot>, Error>;

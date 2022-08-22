@@ -8,7 +8,7 @@ extern crate serde;
 extern crate serde_derive;
 extern crate toml;
 #[macro_use]
-extern crate failure;
+extern crate anyhow;
 extern crate sys_mount;
 extern crate uuid;
 extern crate tempfile;
@@ -46,7 +46,7 @@ use std::path;
 
 use structopt::StructOpt;
 
-use failure::Error;
+use anyhow::Error;
 
 #[derive(Debug, StructOpt)]
 #[structopt(name = "backupmanager", about = "a file backup program")]

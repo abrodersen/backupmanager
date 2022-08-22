@@ -16,7 +16,7 @@ use rusoto_s3::S3;
 
 use crossbeam::channel;
 
-use failure::{self, Error, ResultExt};
+use anyhow::{self, Error, Context};
 
 use futures::{Async, Future, Poll, stream};
 
@@ -265,7 +265,7 @@ impl Destination for AwsBucket {
         upload_req.storage_class = Some("DEEP_ARCHIVE".into());
 
         let response = client.create_multipart_upload(upload_req).sync()?;
-        let id = response.upload_id.ok_or(failure::err_msg("no upload id returned"))?;
+        let id = response.upload_id.ok_or(Error::msg("no upload id returned"))?;
 
         let hint_size = get_next_pow2(f64::ceil((size_hint as f64) / 10000.0) as u64);
         let block_size = cmp::max(1 << 26, hint_size as usize);

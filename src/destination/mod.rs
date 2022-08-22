@@ -4,7 +4,7 @@ pub(crate) mod null;
 
 use std::io;
 
-use failure::Error;
+use anyhow::Error;
 
 use chrono::prelude::*;
 

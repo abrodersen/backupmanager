@@ -3,7 +3,7 @@ use std::io;
 
 use crate::encryption::Cryptor;
 
-use failure::Error;
+use anyhow::Error;
 
 pub struct IdentityCompressor {
     inner: Box<Cryptor>,

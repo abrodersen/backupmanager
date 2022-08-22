@@ -3,7 +3,7 @@ use std::io;
 
 use crate::destination::Target;
 
-use failure::Error;
+use anyhow::Error;
 
 pub struct IdentityCryptor {
     inner: Box<Target>,

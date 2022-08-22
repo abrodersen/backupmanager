@@ -2,7 +2,7 @@
 use std::fs;
 use std::io;
 
-use failure::Error;
+use anyhow::Error;
 
 pub struct FileDescriptorDestination {
     file: fs::File

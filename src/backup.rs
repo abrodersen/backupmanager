@@ -12,7 +12,7 @@ use std::str::FromStr;
 
 use tar;
 
-use failure::{Error, ResultExt};
+use anyhow::{Error, Context};
 
 use chrono::prelude::*;
 
@@ -110,7 +110,7 @@ pub fn backup(job: &Job) -> Result<(), Error> {
             info!("creating write pipeline");
             create_pipeline(job, destination.as_ref(), &desc, hint)
         })
-        .and_then(|compressor| {
+        .and_then(|(compressor, ctx)| {
             info!("copying data from snapshot to target");
             upload_archive(snapshot.as_ref(), compressor, full_manifest.as_ref())
         });
@@ -166,36 +166,40 @@ fn create_pipeline(
     dest: &dyn Destination, 
     desc: &TargetDescriptor, 
     size_hint: u64)
-    -> Result<Box<Compressor>, Error> 
+    -> Result<(Box<dyn Compressor>, Option<encryption::pgp::PgpContext>), Error> 
 {
     info!("allocating a target with size hint {} for backup data", size_hint);
     let target = dest.allocate(&desc, size_hint)?;
 
+    let mut pgp_ctx = None;
+
     let cryptor = match &job.encryption {
-        None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<Cryptor>,
+        None => Box::new(encryption::identity::IdentityCryptor::new(target)) as Box<dyn Cryptor>,
         Some(cfg) => match cfg.typ {
             config::EncryptionType::Pgp { ref pubkey_file } => {
-                let pgp = encryption::pgp::PgpCryptor::new(target, pubkey_file)?;
-                Box::new(pgp) as Box<Cryptor>
+                let ctx = encryption::pgp::PgpContext::new(pubkey_file)?;
+                let pgp = encryption::pgp::PgpCryptor::new(target, &ctx)?;
+                pgp_ctx = Some(ctx);
+                Box::new(pgp) as Box<dyn Cryptor>
             }
         }
     };
 
     let compressor = match &job.compression {
-        None => Box::new(compression::identity::IdentityCompressor::new(cryptor)) as Box<Compressor>,
+        None => Box::new(compression::identity::IdentityCompressor::new(cryptor)) as Box<dyn Compressor>,
         Some(cfg) => match cfg.typ {
-            config::CompressionType::Gzip => Box::new(compression::gzip::GzipCompressor::new(cryptor)) as Box<Compressor>,
+            config::CompressionType::Gzip => Box::new(compression::gzip::GzipCompressor::new(cryptor)) as Box<dyn Compressor>,
         }
     };
 
-    Ok(compressor)
+    Ok((compressor, pgp_ctx))
 }
 
 fn upload_archive(
-    snapshot: &Snapshot,
-    target: Box<Compressor>,
+    snapshot: &dyn Snapshot,
+    target: Box<dyn Compressor>,
     filter: Option<&Manifest>)
-    -> Result<(Box<Compressor>, Manifest), Error>
+    -> Result<(Box<dyn Compressor>, Manifest), Error>
 {
     let mut manifest = Manifest::new()?;
 
